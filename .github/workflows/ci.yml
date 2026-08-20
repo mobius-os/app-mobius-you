@@ -1,0 +1,33 @@
+name: CI
+
+# Validates the app on every push to main and every PR. The contract tests are
+# self-contained (node --test, no shell deps); the compile smoke bundles the
+# entry with esbuild to catch JSX/import breakage before it reaches the store.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout app
+        uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Contract tests
+        run: node --test identity-contract.test.mjs
+
+      - name: Compile smoke (entry + runtime files)
+        run: |
+          npx --yes esbuild@0.25.12 index.jsx \
+            --bundle --format=esm --jsx=automatic \
+            --external:react --external:react-dom --external:@openai/* \
+            --outfile=/dev/null

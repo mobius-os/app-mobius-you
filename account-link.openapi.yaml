@@ -1,0 +1,178 @@
+openapi: 3.1.0
+info:
+  title: Möbius account-link API
+  version: 2.0.0
+  description: >-
+    PKCE account linking between a self-hosted Möbius and mobius.you. Browser
+    endpoints reuse the site's existing Google and Apple authentication.
+paths:
+  /connect/mobius:
+    get:
+      operationId: authorizeSelfHostedMobius
+      parameters:
+        - { name: state, in: query, required: true, schema: { type: string, minLength: 32, maxLength: 512 } }
+        - { name: code_challenge, in: query, required: true, schema: { type: string, minLength: 43, maxLength: 128 } }
+        - { name: code_challenge_method, in: query, required: true, schema: { type: string, const: S256 } }
+        - { name: provider, in: query, required: true, schema: { type: string, enum: [google, apple] } }
+        - { name: client_origin, in: query, required: true, schema: { type: string, format: uri, description: Exact HTTPS or loopback origin bound through consent, code, grant, and postMessage target. } }
+      responses:
+        '302':
+          description: >-
+            Starts the selected Google or Apple sign-in. After the provider
+            callback, the browser continues at /connect/mobius/resume.
+        '400': { description: Invalid request or unavailable provider. }
+  /connect/mobius/resume:
+    get:
+      operationId: resumeSelfHostedMobiusAuthorization
+      responses:
+        '200':
+          description: Shows the exact client origin and asks for account-link consent.
+          content: { text/html: { schema: { type: string } } }
+        '400': { description: Missing session or invalid/expired signed request. }
+  /connect/mobius/confirm:
+    post:
+      operationId: confirmSelfHostedMobiusAuthorization
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [csrf]
+              properties:
+                csrf: { type: string, minLength: 32, maxLength: 512 }
+      responses:
+        '200':
+          description: >-
+            Issues a one-use code and returns a no-store completion page. The
+            page posts code/state to window.opener.top only at the exact signed
+            client origin, then closes itself.
+          content: { text/html: { schema: { type: string } } }
+        '400': { description: Missing session, invalid CSRF, or expired request. }
+  /api/account-links/token:
+    post:
+      operationId: exchangeSelfHostedMobiusCode
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [code, code_verifier]
+              properties:
+                code: { type: string, minLength: 32, maxLength: 512 }
+                code_verifier: { type: string, minLength: 43, maxLength: 128 }
+      responses:
+        '200':
+          description: Narrow account grant. Returned only to the local backend.
+          headers:
+            Cache-Control: { schema: { type: string, const: no-store } }
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [access_token, token_type, scope, identity]
+                properties:
+                  access_token: { type: string, minLength: 32 }
+                  token_type: { type: string, const: Bearer }
+                  scope: { type: string, const: 'identity:read identity:write deployments:read' }
+                  identity: { $ref: '#/components/schemas/LinkedIdentity' }
+        '400': { description: Invalid, expired, client-origin-mismatched, or PKCE-mismatched code. Repeating an already successful exchange returns the same grant and identity. }
+  /api/account-links/revoke:
+    post:
+      operationId: revokeSelfHostedMobiusGrant
+      security: [{ accountLinkBearer: [] }]
+      responses:
+        '204': { description: Grant revoked or already absent; intentionally idempotent for unknown tokens. }
+  /api/account/v1/identity:
+    get:
+      operationId: getLinkedAccountIdentity
+      security: [{ accountLinkBearer: [] }]
+      responses:
+        '200':
+          description: Profile and launcher-managed active deployments.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LinkedIdentity' }
+        '401': { description: Link expired or revoked. }
+  /api/account/v1/identity/profile:
+    patch:
+      operationId: updateLinkedAccountProfile
+      security: [{ accountLinkBearer: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [handle]
+              properties:
+                handle: { type: string, pattern: '^[a-z0-9_]{3,30}$' }
+      responses:
+        '200':
+          description: Profile updated.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LinkedIdentity' }
+        '401': { description: Link expired or revoked. }
+        '409': { description: Handle already claimed or reserved. }
+        '422': { description: Invalid handle or request body. }
+  /api/account/v1/identity/avatar:
+    post:
+      operationId: updateLinkedAccountAvatar
+      security: [{ accountLinkBearer: [] }]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [avatar]
+              properties:
+                avatar: { type: string, format: binary }
+      responses:
+        '200':
+          description: Avatar updated.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LinkedIdentity' }
+        '201':
+          description: First avatar created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LinkedIdentity' }
+        '401': { description: Link expired or revoked. }
+        '413': { description: Image exceeds 5 MB. }
+        '415': { description: Unsupported image type. }
+components:
+  securitySchemes:
+    accountLinkBearer:
+      type: http
+      scheme: bearer
+      description: >-
+        At most one active grant per exact client origin; relinking revokes the prior grant. Revocable grant scoped to identity and deployment inventory. Never
+        exposed to the mini-app or browser storage.
+  schemas:
+    LinkedIdentity:
+      type: object
+      additionalProperties: false
+      required: [profile, deployments]
+      properties:
+        profile: { $ref: '#/components/schemas/LinkedProfile' }
+        deployments:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items: { $ref: 'launcher.openapi.yaml#/components/schemas/Deployment' }
+    LinkedProfile:
+      allOf:
+        - { $ref: 'launcher.openapi.yaml#/components/schemas/Profile' }
+        - type: object
+          required: [user_id, email]
+          properties:
+            user_id: { type: string, minLength: 1, maxLength: 128 }
+            email: { type: string, format: email, maxLength: 320 }

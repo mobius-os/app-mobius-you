@@ -1,0 +1,229 @@
+openapi: 3.1.0
+info:
+  title: Möbius local identity bridge
+  version: 2.0.0
+  description: The only identity contract exposed to the mini-app. Every route requires the app's reviewed identity_manage capability.
+paths:
+  /api/identity:
+    get:
+      operationId: readLocalIdentity
+      security: [{ appBearer: [] }]
+      responses:
+        '200':
+          description: Explicit local/account state. The local deployment is always present.
+          content: { application/json: { schema: { $ref: '#/components/schemas/Identity' } } }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/IdentityCapabilityRequired' }
+  /api/identity/profile:
+    patch:
+      operationId: updateLocalIdentityProfile
+      security: [{ appBearer: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, additionalProperties: false, required: [handle], properties: { handle: { type: string, pattern: '^[a-z0-9_]{3,30}$' } } } } }
+      responses:
+        '200': { description: Updated identity, content: { application/json: { schema: { $ref: '#/components/schemas/AvailableIdentity' } } } }
+        '409': { description: Signed out or handle unavailable. }
+        '422': { description: Invalid handle or request body. }
+        '502': { description: Account service unavailable. }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/IdentityCapabilityRequired' }
+  /api/identity/avatar:
+    get:
+      operationId: readLocalIdentityAvatar
+      description: >-
+        Proxies the trusted account avatar through the authenticated local
+        bridge so the opaque app frame keeps its same-origin image CSP.
+      security: [{ appBearer: [] }]
+      responses:
+        '200':
+          description: JPEG, PNG, or WebP avatar bytes.
+          content:
+            image/jpeg: { schema: { type: string, format: binary } }
+            image/png: { schema: { type: string, format: binary } }
+            image/webp: { schema: { type: string, format: binary } }
+        '404': { description: Signed out or no profile picture is configured. }
+        '502': { description: Account avatar unavailable, invalid, or oversized. }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/IdentityCapabilityRequired' }
+    post:
+      operationId: updateLocalIdentityAvatar
+      security: [{ appBearer: [] }]
+      requestBody:
+        required: true
+        content: { multipart/form-data: { schema: { type: object, additionalProperties: false, required: [avatar], properties: { avatar: { type: string, format: binary } } } } }
+      responses:
+        '200': { description: Updated identity, content: { application/json: { schema: { $ref: '#/components/schemas/AvailableIdentity' } } } }
+        '409': { description: Signed out. }
+        '413': { description: Image exceeds 5 MB. }
+        '415': { description: Unsupported image type. }
+        '422': { description: Missing multipart avatar field. }
+        '502': { description: Account service unavailable. }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/IdentityCapabilityRequired' }
+  /api/identity/link/start:
+    post:
+      operationId: startLocalAccountLink
+      security: [{ appBearer: [] }]
+      description: Creates a PKCE attempt without preflighting the authorization URL. The configured client origin must be exact HTTPS or loopback.
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, additionalProperties: false, required: [provider], properties: { provider: { type: string, enum: [google, apple] } } } } }
+      responses:
+        '200':
+          description: Browser authorization details; the PKCE verifier remains local and encrypted.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [authorization_url, attempt, state, expires_at]
+                properties:
+                  authorization_url: { type: string, format: uri }
+                  attempt: { type: string, pattern: '^[A-Za-z0-9_-]{16,512}$' }
+                  state: { type: string, pattern: '^[A-Za-z0-9_-]{32,512}$' }
+                  expires_at: { type: string, format: date-time }
+        '409': { description: Managed/already-linked account or client-origin configuration error. }
+        '422': { description: Unsupported provider or invalid request body. }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/IdentityCapabilityRequired' }
+  /api/identity/link/complete:
+    post:
+      operationId: completeLocalAccountLink
+      security: [{ appBearer: [] }]
+      description: Retryable local completion; the remote exchange is idempotent.
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, additionalProperties: false, required: [code, state, attempt], properties: { code: { type: string }, state: { type: string }, attempt: { type: string } } } } }
+      responses:
+        '200': { description: Linked identity, content: { application/json: { schema: { $ref: '#/components/schemas/LinkedAvailable' } } } }
+        '400': { description: Invalid or expired attempt. }
+        '409': { description: Managed, already-linked, damaged, or concurrently completed account state. }
+        '502': { description: Exchange unavailable; the local attempt is retained for retry. }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/IdentityCapabilityRequired' }
+  /api/identity/link:
+    delete:
+      operationId: unlinkLocalAccount
+      security: [{ appBearer: [] }]
+      responses:
+        '204': { description: Revoked remotely and removed locally. }
+        '409': { description: Managed deployments cannot unlink. }
+        '502': { description: Revocation unconfirmed; the local link is retained. }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/IdentityCapabilityRequired' }
+components:
+  securitySchemes:
+    appBearer:
+      type: http
+      scheme: bearer
+      description: Ordinary app-scoped token for the installed Identity app.
+  responses:
+    Unauthenticated:
+      description: Missing or invalid app token.
+    IdentityCapabilityRequired:
+      description: The installed app lacks the reviewed identity_manage grant.
+  schemas:
+    Identity:
+      oneOf:
+        - { $ref: '#/components/schemas/SignedOut' }
+        - { $ref: '#/components/schemas/LinkedAvailable' }
+        - { $ref: '#/components/schemas/LinkedUnavailable' }
+        - { $ref: '#/components/schemas/ManagedAvailable' }
+        - { $ref: '#/components/schemas/ManagedUnavailable' }
+    AvailableIdentity:
+      oneOf:
+        - { $ref: '#/components/schemas/LinkedAvailable' }
+        - { $ref: '#/components/schemas/ManagedAvailable' }
+    SignedOut:
+      type: object
+      additionalProperties: false
+      required: [account_mode, account_unavailable, instance_id, profile, deployments]
+      properties:
+        account_mode: { const: signed_out }
+        account_unavailable: { const: false }
+        instance_id: { type: 'null' }
+        profile: { type: 'null' }
+        deployments: { $ref: '#/components/schemas/LocalDeployments' }
+    LinkedAvailable:
+      type: object
+      additionalProperties: false
+      required: [account_mode, account_unavailable, instance_id, profile, deployments]
+      properties:
+        account_mode: { const: linked }
+        account_unavailable: { const: false }
+        instance_id: { type: 'null' }
+        profile: { $ref: '#/components/schemas/Profile' }
+        deployments: { $ref: '#/components/schemas/LocalDeployments' }
+    LinkedUnavailable:
+      type: object
+      additionalProperties: false
+      required: [account_mode, account_unavailable, instance_id, profile, deployments]
+      properties:
+        account_mode: { const: linked }
+        account_unavailable: { const: true }
+        instance_id: { type: 'null' }
+        profile: { type: 'null' }
+        deployments: { $ref: '#/components/schemas/LocalDeployments' }
+    ManagedAvailable:
+      type: object
+      additionalProperties: false
+      required: [account_mode, account_unavailable, instance_id, profile, deployments]
+      properties:
+        account_mode: { const: managed }
+        account_unavailable: { const: false }
+        instance_id: { type: string, minLength: 1 }
+        profile: { $ref: '#/components/schemas/Profile' }
+        deployments:
+          type: array
+          minItems: 1
+          maxItems: 100
+          contains: { type: object, required: [current], properties: { current: { const: true } } }
+          items: { $ref: '#/components/schemas/BridgeDeployment' }
+    ManagedUnavailable:
+      type: object
+      additionalProperties: false
+      required: [account_mode, account_unavailable, instance_id, profile, deployments]
+      properties:
+        account_mode: { const: managed }
+        account_unavailable: { const: true }
+        instance_id: { type: string, minLength: 1 }
+        profile: { $ref: '#/components/schemas/DegradedManagedProfile' }
+        deployments: { $ref: '#/components/schemas/LocalDeployments' }
+    LocalDeployments:
+      type: array
+      minItems: 1
+      maxItems: 100
+      contains: { type: object, required: [current], properties: { current: { const: true } } }
+      items: { $ref: '#/components/schemas/BridgeDeployment' }
+    BridgeDeployment:
+      type: object
+      additionalProperties: false
+      required: [id, name, status, url]
+      properties:
+        id: { type: string, maxLength: 96 }
+        name: { type: string, maxLength: 128 }
+        status: { type: string, enum: [Active, Linked] }
+        region: { anyOf: [{ type: string, maxLength: 64 }, { type: 'null' }] }
+        url: { type: string, format: uri }
+        current: { type: boolean }
+    Profile:
+      type: object
+      additionalProperties: false
+      required: [user_id, email, display_name, handle, avatar_url]
+      properties:
+        user_id: { type: string, minLength: 1 }
+        email: { type: string, format: email }
+        display_name: { type: string }
+        handle: { anyOf: [{ type: string, pattern: '^[a-z0-9_]{3,30}$' }, { type: 'null' }] }
+        avatar_url: { anyOf: [{ type: string, format: uri }, { type: 'null' }] }
+    DegradedManagedProfile:
+      type: object
+      additionalProperties: false
+      required: [user_id, email, display_name, handle, avatar_url]
+      properties:
+        user_id: { type: string, minLength: 1 }
+        email: { type: string, format: email }
+        display_name: { type: 'null' }
+        handle: { type: 'null' }
+        avatar_url: { type: 'null' }

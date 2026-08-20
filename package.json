@@ -1,0 +1,9 @@
+{
+  "name": "app-mobius-you",
+  "private": true,
+  "type": "module",
+  "description": "Möbius · You — your Möbius account, profile and active deployments. A Möbius mini-app.",
+  "scripts": {
+    "test": "node --test identity-contract.test.mjs"
+  }
+}

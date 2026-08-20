@@ -1,0 +1,139 @@
+openapi: 3.1.0
+info:
+  title: Möbius Launch instance identity API
+  version: 2.0.0
+  description: >-
+    Private server-to-server API used by one managed Möbius deployment. The
+    instance bearer resolves both the instance and its owning user; callers
+    never select a user ID.
+paths:
+  /api/instance/v1/identity:
+    get:
+      operationId: getInstanceIdentity
+      security: [{ instanceBearer: [] }]
+      parameters: [{ $ref: '#/components/parameters/InstanceId' }]
+      responses:
+        '200':
+          description: Profile and active deployments for the bound user.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Identity' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /api/instance/v1/identity/profile:
+    patch:
+      operationId: updateInstanceIdentityProfile
+      security: [{ instanceBearer: [] }]
+      parameters: [{ $ref: '#/components/parameters/InstanceId' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [handle]
+              properties:
+                handle:
+                  type: string
+                  pattern: '^[a-z0-9_]{3,30}$'
+      responses:
+        '200':
+          description: Handle accepted.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Identity' }
+        '409':
+          description: Normalized handle is already claimed or reserved.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [detail]
+                properties: { detail: { type: string } }
+        '422': { description: Invalid handle or request body. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /api/instance/v1/identity/avatar:
+    post:
+      operationId: updateInstanceIdentityAvatar
+      security: [{ instanceBearer: [] }]
+      parameters: [{ $ref: '#/components/parameters/InstanceId' }]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [avatar]
+              properties:
+                avatar:
+                  type: string
+                  format: binary
+      responses:
+        '200':
+          description: Avatar replaced.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Identity' }
+        '201':
+          description: First avatar created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Identity' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '413': { description: Image exceeds 5 MB. }
+        '415': { description: Image is not JPEG, PNG, or WebP. }
+        '422': { description: Missing multipart avatar field. }
+components:
+  securitySchemes:
+    instanceBearer:
+      type: http
+      scheme: bearer
+      description: The per-instance MOBIUS_SSO_CLIENT_SECRET.
+  parameters:
+    InstanceId:
+      name: X-Mobius-Instance-Id
+      in: header
+      required: true
+      schema: { type: string, pattern: '^mob_[A-Za-z0-9_-]{3,80}$' }
+  responses:
+    Unauthorized:
+      description: Unknown instance, wrong secret, or revoked deployment.
+  schemas:
+    Identity:
+      type: object
+      additionalProperties: false
+      required: [profile, deployments]
+      properties:
+        profile: { $ref: '#/components/schemas/Profile' }
+        deployments:
+          type: array
+          minItems: 1
+          maxItems: 100
+          contains: { type: object, required: [current], properties: { current: { const: true } } }
+          items: { $ref: '#/components/schemas/Deployment' }
+    Profile:
+      type: object
+      additionalProperties: false
+      required: [display_name]
+      properties:
+        display_name: { type: string, maxLength: 80 }
+        handle:
+          anyOf:
+            - { type: string, pattern: '^[a-z0-9_]{3,30}$' }
+            - { type: 'null' }
+        avatar_url:
+          anyOf:
+            - { type: string, format: uri, pattern: '^https://' }
+            - { type: 'null' }
+    Deployment:
+      type: object
+      additionalProperties: false
+      required: [id, name, status, url]
+      properties:
+        id: { type: string, maxLength: 96 }
+        name: { type: string, maxLength: 128 }
+        status: { type: string, enum: [Active] }
+        region:
+          anyOf: [{ type: string, maxLength: 64 }, { type: 'null' }]
+        url: { type: string, format: uri, pattern: '^https://' }
+        current: { type: boolean, default: false }
