@@ -184,7 +184,6 @@ function validRailwayInstance(instance) {
 
 function positiveIntList(value, max = 64) {
   return Array.isArray(value)
-    && value.length >= 1
     && value.length <= max
     && value.every(item => Number.isInteger(item) && item > 0)
 }
@@ -194,10 +193,13 @@ function positiveIntList(value, max = 64) {
 // mobius.you website shows. Absent on older hosts — treated as "unknown", the
 // app then omits the pickers rather than guessing limits.
 function validPlanLimits(value) {
-  return exactKeys(value, [
-    'cpu_choices', 'max_cpu', 'memory_options_mb',
-    'max_memory_mb', 'volume_options_mb', 'default_volume_mb',
-  ])
+  // Lenient: require the known fields with correct types, but tolerate empty
+  // option lists and extra keys a newer account host may add. parseRailway DROPS
+  // a plan_limits that fails this rather than rejecting the whole payload, so
+  // shape drift only costs the pickers, never the deployments/connection panel.
+  return value !== null
+    && typeof value === 'object'
+    && !Array.isArray(value)
     && positiveIntList(value.cpu_choices)
     && Number.isInteger(value.max_cpu) && value.max_cpu > 0
     && positiveIntList(value.memory_options_mb)
@@ -236,8 +238,12 @@ export function parseRailway(value) {
       || connection.plan.length > 32
       || typeof connection.deploy_blocked !== 'string'
       || connection.deploy_blocked.length > 360
-      || (connection.plan_limits !== undefined && !validPlanLimits(connection.plan_limits))
     ) throw new Error('Möbius returned an invalid Railway connection.')
+    // Shape drift in the OPTIONAL plan_limits costs only the resource pickers:
+    // drop it so a newer/mismatched host never blanks the whole Railway panel.
+    if (connection.plan_limits !== undefined && !validPlanLimits(connection.plan_limits)) {
+      delete connection.plan_limits
+    }
   }
   return value
 }

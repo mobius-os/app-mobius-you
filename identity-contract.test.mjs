@@ -225,15 +225,28 @@ test('accepts an optional plan_limits block and rejects a malformed one', () => 
   const withLimits = { ...base, connection: { ...base.connection, plan_limits: limits } }
   assert.equal(parseRailway(withLimits), withLimits)
 
-  // Malformed plan_limits (missing a field / wrong type) is rejected.
-  assert.throws(() => parseRailway({
+  // Malformed plan_limits is DROPPED (pickers omitted) — the panel is NOT blanked.
+  const drifted = parseRailway({
     ...base,
     connection: { ...base.connection, plan_limits: { ...limits, max_cpu: '8' } },
-  }))
-  assert.throws(() => parseRailway({
+  })
+  assert.equal(drifted.connection.plan_limits, undefined)
+  const partial = parseRailway({
     ...base,
     connection: { ...base.connection, plan_limits: { cpu_choices: [1] } },
-  }))
+  })
+  assert.equal(partial.connection.plan_limits, undefined)
+  // Extra keys and empty option lists a newer host may send are tolerated (kept).
+  const extended = parseRailway({
+    ...base,
+    connection: { ...base.connection, plan_limits: { ...limits, max_volume_mb: 5000 } },
+  })
+  assert.ok(extended.connection.plan_limits)
+  const emptyChoices = parseRailway({
+    ...base,
+    connection: { ...base.connection, plan_limits: { ...limits, cpu_choices: [] } },
+  })
+  assert.ok(emptyChoices.connection.plan_limits)
   // An unrelated extra key on the connection is still rejected.
   assert.throws(() => parseRailway({
     ...base,

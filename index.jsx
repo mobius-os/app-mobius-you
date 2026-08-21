@@ -1235,14 +1235,20 @@ function RailwayConnectionModal({
                 className="id-select"
                 value={currentWorkspace}
                 disabled={Boolean(pending)}
-                onChange={event => run('workspace', async () => {
-                  await identityRequest(token, '/railway/workspace', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ workspace_id: event.target.value }),
+                onChange={event => {
+                  const nextId = event.target.value
+                  run('workspace', async () => {
+                    await identityRequest(token, '/railway/workspace', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ workspace_id: nextId }),
+                    })
+                    // Keep the picker in sync with the switch: loadRailway refreshes
+                    // /railway (the header) but not this modal's workspace inventory.
+                    setInventory(previous => (previous ? { ...previous, current: nextId } : previous))
+                    await onReload()
                   })
-                  await onReload()
-                })}
+                }}
               >
                 {workspaces.map(item => (
                   <option key={item.id} value={item.id}>{item.name}</option>
