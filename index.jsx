@@ -642,6 +642,7 @@ function Deployments({
   onConnect,
   onReconnect,
   onManageConnection,
+  connecting,
 }) {
   const managedById = new Map((railway?.instances || []).map(item => [item.id, item]))
   const deployments = [...items]
@@ -703,8 +704,10 @@ function Deployments({
               ? 'Railway authorization needs attention before this account can manage deployments.'
               : 'Connect your Railway account to create and manage Möbius deployments here.'}</span>
           </div>
-          <button type="button" className="id-btn id-btn--primary" onClick={onConnect}>
-            {railway.connection ? 'Reconnect Railway' : 'Connect Railway'}
+          <button type="button" className="id-btn id-btn--primary" onClick={onConnect} disabled={connecting}>
+            {connecting
+              ? <><ArrowRotateCw className="id-spin" width={16} /> Connecting…</>
+              : (railway.connection ? 'Reconnect Railway' : 'Connect Railway')}
           </button>
         </div>
       )}
@@ -812,9 +815,18 @@ function ResourceFields({
   limits, cpu, memory, volume, onCpu, onMemory, onVolume, disabled, storageMinMb = 0,
 }) {
   if (!limits) return null
-  const cpuChoices = limits.cpu_choices.filter(value => value < limits.max_cpu)
-  const memChoices = limits.memory_options_mb.filter(value => value < limits.max_memory_mb)
-  const volChoices = limits.volume_options_mb.filter(value => value >= storageMinMb)
+  // Keep whatever the deployment currently sits on selectable even if it is not
+  // one of the plan's listed steps, so the control never silently snaps to
+  // "Plan maximum" and submit a value the user did not choose.
+  const withCurrent = (choices, raw) => {
+    const value = Number(String(raw ?? '').trim())
+    return raw && Number.isFinite(value) && !choices.includes(value)
+      ? [...choices, value].sort((a, b) => a - b)
+      : choices
+  }
+  const cpuChoices = withCurrent(limits.cpu_choices.filter(value => value < limits.max_cpu), cpu)
+  const memChoices = withCurrent(limits.memory_options_mb.filter(value => value < limits.max_memory_mb), memory)
+  const volChoices = withCurrent(limits.volume_options_mb.filter(value => value >= storageMinMb), volume)
   return (
     <div className="id-resource-fields">
       <label className="id-field-block">
@@ -1037,6 +1049,20 @@ function meterPercent(value) {
   return Number.isFinite(parsed) ? Math.max(0, Math.min(100, parsed)) : 0
 }
 
+function formatDeployedAt(iso) {
+  if (!iso) return ''
+  const then = new Date(iso)
+  if (Number.isNaN(then.getTime())) return ''
+  const mins = Math.round((Date.now() - then.getTime()) / 60000)
+  if (mins < 1) return 'Deployed just now'
+  if (mins < 60) return `Deployed ${mins}m ago`
+  const hrs = Math.round(mins / 60)
+  if (hrs < 24) return `Deployed ${hrs}h ago`
+  const days = Math.round(hrs / 24)
+  if (days < 30) return `Deployed ${days}d ago`
+  return `Deployed ${then.toLocaleDateString()}`
+}
+
 function MetricMeter({ label, value, limit, percent }) {
   const pct = meterPercent(percent)
   return (
@@ -1081,7 +1107,12 @@ function DeploymentMetrics({ token, instance }) {
   // Render the meter structure immediately so the manage view opens complete;
   // values fill in when the fetch returns rather than gating on a spinner.
   const runtime = metrics?.runtime || {}
-  const runtimeBits = [runtime.status_label, runtime.region_label, runtime.data_status].filter(Boolean)
+  const runtimeBits = [
+    runtime.status_label,
+    runtime.region_label,
+    formatDeployedAt(runtime.latest_deployment_at),
+    runtime.data_status,
+  ].filter(Boolean)
   return (
     <div className={`id-metrics${metrics ? '' : ' is-loading'}`}>
       {metrics
@@ -1277,7 +1308,7 @@ function ManageDeploymentModal({ instance, onClose, onCompute, onStorage, onRetr
             )}
             <button
               type="button"
-              className="id-btn id-resource-save"
+              className="id-btn"
               disabled={Boolean(pending)}
               onClick={() => run('compute', () => onCompute(instance.id, {
                 cpu: cpu ? Number(cpu) : null,
@@ -1314,7 +1345,7 @@ function ManageDeploymentModal({ instance, onClose, onCompute, onStorage, onRetr
                 </label>
                 <button
                   type="button"
-                  className="id-btn id-resource-save"
+                  className="id-btn"
                   disabled={Boolean(pending) || !volume
                     || (Boolean(planLimits) && Number(volume) <= instance.resources.volume_size_mb)}
                   onClick={() => run('storage', () => onStorage(instance.id, {
@@ -1481,9 +1512,7 @@ function RailwayConnectionModal({
             <div className="id-field-block">
               <span className="id-label">Plan</span>
               <div className="id-value">
-                {connection.plan && connection.plan !== 'unknown'
-                  ? connection.plan.charAt(0).toUpperCase() + connection.plan.slice(1)
-                  : 'Not detected yet'}
+                {planTitle(connection.plan) || 'Not detected yet'}
               </div>
             </div>
             <button
@@ -1882,6 +1911,7 @@ export default function App({ appId, token }) {
                 onNew={() => setCreatingDeployment(true)}
                 onManage={setManagingDeployment}
                 onConnect={() => connectRailway()}
+                connecting={connectingRailway}
                 onManageConnection={() => setManagingRailway(true)}
                 onReconnect={() => {
                   setReconnecting(true)

@@ -293,10 +293,6 @@ export function accountStatus(identity) {
   return { label: 'Not signed in', tone: 'muted' }
 }
 
-function exactMessage(message, fields) {
-  return exactKeys(message, fields)
-}
-
 export function waitForAccountLink({
   popup,
   attempt,
@@ -353,7 +349,7 @@ export function waitForAccountLink({
       const message = event.data
       if (
         !registered
-        && exactMessage(message, ['type', 'state'])
+        && exactKeys(message, ['type', 'state'])
         && message.type === 'moebius:account-link-registered'
         && message.state === attempt.state
       ) {
@@ -368,7 +364,7 @@ export function waitForAccountLink({
       }
       if (
         !registered
-        || !exactMessage(message, ['type', 'code', 'state', 'authorizationOrigin'])
+        || !exactKeys(message, ['type', 'code', 'state', 'authorizationOrigin'])
         || message.type !== 'moebius:account-link-result'
         || message.authorizationOrigin !== authorizationOrigin
         || message.state !== attempt.state

@@ -24,6 +24,11 @@ button { user-select: none; -webkit-user-select: none; }
   margin: 0 auto;
 }
 
+/* apps-sdk icons render <svg width="1em" height="1em">; a width={N} prop sets
+   width but leaves height at 1em, so icons distort in any non-16px context.
+   Derive height from the (square) width instead — one fix for the whole set. */
+.id-root svg[height="1em"] { height: auto; }
+
 .id-top,
 .id-brand,
 .id-status,
@@ -688,17 +693,6 @@ button { user-select: none; -webkit-user-select: none; }
   text-transform: capitalize;
 }
 
-.id-resource-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-  padding: 17px 0;
-  border-top: 1px solid var(--border-light, var(--border, #2a2a2a));
-  border-bottom: 1px solid var(--border-light, var(--border, #2a2a2a));
-}
-
-.id-resource-save { grid-column: 1 / -1; }
-
 .id-select {
   width: 100%;
   height: 46px;
@@ -1046,13 +1040,6 @@ button { user-select: none; -webkit-user-select: none; }
   text-transform: uppercase;
 }
 
-.id-fine {
-  margin: 0;
-  color: var(--muted, #999);
-  font-size: 11px;
-  line-height: 1.45;
-}
-
 /* Cost reassurance: Möbius takes no payment; Railway bills the user directly. */
 .id-cost-note {
   display: flex;
@@ -1225,17 +1212,6 @@ button { user-select: none; -webkit-user-select: none; }
 
 .id-spin { animation: id-spin 1s linear infinite; }
 
-.id-sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border: 0;
-}
-
 @keyframes id-spin { to { transform: rotate(360deg); } }
 
 @media (hover: hover) {
@@ -1330,8 +1306,6 @@ button { user-select: none; -webkit-user-select: none; }
 
   .id-railway-callout .id-btn { width: 100%; }
 
-  .id-resource-grid { grid-template-columns: 1fr; }
-  .id-resource-save { grid-column: auto; }
   .id-resource-fields { grid-template-columns: 1fr; }
   .id-meters { grid-template-columns: 1fr; }
   .id-storage-row { grid-template-columns: 1fr; align-items: stretch; }
