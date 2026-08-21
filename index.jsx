@@ -8,8 +8,6 @@ import {
   ArrowRotateCw,
   ArrowUpRight,
   Camera,
-  Check,
-  Copy,
   Lock,
   Pencil,
   Plus,
@@ -153,7 +151,24 @@ function AppleMark() {
   )
 }
 
-function Brand({ appId, status }) {
+function Brand({ appId, status, onUnlink }) {
+  const [menuOpen, setMenuOpen] = useState(false)
+  const menuRef = useRef(null)
+
+  useEffect(() => {
+    if (!menuOpen) return undefined
+    const onPointer = event => {
+      if (menuRef.current && !menuRef.current.contains(event.target)) setMenuOpen(false)
+    }
+    const onKey = event => { if (event.key === 'Escape') setMenuOpen(false) }
+    document.addEventListener('mousedown', onPointer)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onPointer)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [menuOpen])
+
   return (
     <header className="id-top">
       <div className="id-brand">
@@ -163,10 +178,40 @@ function Brand({ appId, status }) {
           <div className="id-kicker">your Möbius account</div>
         </div>
       </div>
-      <div className="id-status" role="status" aria-live="polite">
-        <span className={`id-dot id-dot--${status.tone}`} aria-hidden="true" />
-        <span className="id-status-label">{status.label}</span>
-      </div>
+      {onUnlink ? (
+        // The connection pill doubles as a menu: click "Linked to mobius.you"
+        // to reveal the unlink action, keeping the account body uncluttered.
+        <div className="id-status-menu" ref={menuRef}>
+          <button
+            type="button"
+            className="id-status id-status--menu"
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
+            onClick={() => setMenuOpen(open => !open)}
+          >
+            <span className={`id-dot id-dot--${status.tone}`} aria-hidden="true" />
+            <span className="id-status-label">{status.label}</span>
+            <svg className="id-status-caret" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
+          </button>
+          {menuOpen && (
+            <div className="id-status-dropdown" role="menu">
+              <button
+                type="button"
+                role="menuitem"
+                className="id-status-item"
+                onClick={() => { setMenuOpen(false); onUnlink() }}
+              >
+                Unlink mobius.you account
+              </button>
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="id-status" role="status" aria-live="polite">
+          <span className={`id-dot id-dot--${status.tone}`} aria-hidden="true" />
+          <span className="id-status-label">{status.label}</span>
+        </div>
+      )}
     </header>
   )
 }
@@ -589,6 +634,7 @@ function DisconnectModal({ token, onClose, onDisconnected, reconnecting = false 
 function Deployments({
   items,
   railway,
+  selfHosted,
   onRefresh,
   refreshing,
   onNew,
@@ -706,6 +752,7 @@ function Deployments({
               <div className="id-deploy-meta">
                 {managed?.current_step || item.status}
                 {item.region ? ` · ${item.region}` : ''}
+                {item.current && selfHosted ? ' · Self-hosted' : ''}
                 {item.current ? ' · This deployment' : ''}
               </div>
             </div>
@@ -1031,30 +1078,29 @@ function DeploymentMetrics({ token, instance }) {
 
   if (instance.status !== 'ready') return null
   if (error) return <div className="id-metrics-note">Live metrics are unavailable right now.</div>
-  if (!metrics) {
-    return (
-      <div className="id-metrics-note" role="status">
-        <ArrowRotateCw className="id-spin" width={14} aria-hidden="true" /> Loading live metrics…
-      </div>
-    )
-  }
-  const runtime = metrics.runtime || {}
+  // Render the meter structure immediately so the manage view opens complete;
+  // values fill in when the fetch returns rather than gating on a spinner.
+  const runtime = metrics?.runtime || {}
   const runtimeBits = [runtime.status_label, runtime.region_label, runtime.data_status].filter(Boolean)
   return (
-    <div className="id-metrics">
-      {runtimeBits.length > 0 && (
-        <div className="id-metrics-runtime">{runtimeBits.join(' · ')}</div>
-      )}
+    <div className={`id-metrics${metrics ? '' : ' is-loading'}`}>
+      {metrics
+        ? runtimeBits.length > 0 && <div className="id-metrics-runtime">{runtimeBits.join(' · ')}</div>
+        : (
+          <div className="id-metrics-runtime" role="status">
+            <ArrowRotateCw className="id-spin" width={13} aria-hidden="true" /> Loading live metrics…
+          </div>
+        )}
       <div className="id-meters">
-        <MetricMeter label="CPU" value={metrics.cpu?.label} limit={metrics.cpu?.limit_label} percent={metrics.cpu?.percent} />
-        <MetricMeter label="RAM" value={metrics.memory?.label} limit={metrics.memory?.limit_label} percent={metrics.memory?.percent} />
-        <MetricMeter label="Storage" value={metrics.volume?.used_label} limit={metrics.volume?.allocated_label} percent={metrics.volume?.percent} />
+        <MetricMeter label="CPU" value={metrics?.cpu?.label} limit={metrics?.cpu?.limit_label} percent={metrics?.cpu?.percent} />
+        <MetricMeter label="RAM" value={metrics?.memory?.label} limit={metrics?.memory?.limit_label} percent={metrics?.memory?.percent} />
+        <MetricMeter label="Storage" value={metrics?.volume?.used_label} limit={metrics?.volume?.allocated_label} percent={metrics?.volume?.percent} />
         <MetricMeter
           label="Network"
-          value={metrics.network?.rx_label || metrics.network?.tx_label
-            ? `↓ ${metrics.network?.rx_label || '0'} · ↑ ${metrics.network?.tx_label || '0'}`
+          value={metrics?.network?.rx_label || metrics?.network?.tx_label
+            ? `↓ ${metrics?.network?.rx_label || '0'} · ↑ ${metrics?.network?.tx_label || '0'}`
             : ''}
-          percent={metrics.network?.percent}
+          percent={metrics?.network?.percent}
         />
       </div>
     </div>
@@ -1519,10 +1565,8 @@ export default function App({ appId, token }) {
   const [managingDeployment, setManagingDeployment] = useState(null)
   const [managingRailway, setManagingRailway] = useState(false)
   const [connectingRailway, setConnectingRailway] = useState(false)
-  const [copied, setCopied] = useState(false)
   const [uploading, setUploading] = useState(false)
   const fileRef = useRef(null)
-  const copyTimerRef = useRef(null)
   const loadSequenceRef = useRef(0)
   const railwaySequenceRef = useRef(0)
   const railwayConnectAbortRef = useRef(null)
@@ -1572,7 +1616,6 @@ export default function App({ appId, token }) {
   }, [data?.account_mode, loadRailway])
 
   useEffect(() => () => {
-    clearTimeout(copyTimerRef.current)
     railwayConnectAbortRef.current?.abort()
   }, [])
 
@@ -1643,19 +1686,6 @@ export default function App({ appId, token }) {
     }
   }
 
-  const copyId = async () => {
-    if (!profile?.user_id) return
-    setActionError('')
-    try {
-      await navigator.clipboard.writeText(profile.user_id)
-      setCopied(true)
-      clearTimeout(copyTimerRef.current)
-      copyTimerRef.current = setTimeout(() => setCopied(false), 1400)
-    } catch {
-      setActionError('Couldn’t copy the user ID. Select it manually and try again.')
-    }
-  }
-
   const railwayAction = async (path, options = {}) => {
     const result = await identityRequest(token, `/railway${path}`, options)
     await loadRailway()
@@ -1715,7 +1745,11 @@ export default function App({ appId, token }) {
       <style>{IDENTITY_STYLES}</style>
       <main className="id-root">
         <div className="id-shell">
-          <Brand appId={appId} status={accountStatus(data)} />
+          <Brand
+            appId={appId}
+            status={accountStatus(data)}
+            onUnlink={mode === 'linked' ? () => setDisconnecting(true) : undefined}
+          />
 
           {loadError && (
             <section className="id-notice id-notice--error" role="alert">
@@ -1768,6 +1802,7 @@ export default function App({ appId, token }) {
               <Deployments
                 items={data.deployments}
                 railway={railway}
+                selfHosted={mode === 'linked'}
                 onRefresh={load}
                 refreshing={loading}
               />
@@ -1833,77 +1868,28 @@ export default function App({ appId, token }) {
                 </div>
               </section>
 
-              <section className="id-grid">
-                <Deployments
-                  items={data.deployments}
-                  railway={railway}
-                  onRefresh={() => {
-                    void load()
-                    void loadRailway()
-                  }}
-                  refreshing={loading || railwayLoading}
-                  onNew={() => setCreatingDeployment(true)}
-                  onManage={setManagingDeployment}
-                  onConnect={() => connectRailway()}
-                  onManageConnection={() => setManagingRailway(true)}
-                  onReconnect={() => {
-                    setReconnecting(true)
-                    setDisconnecting(true)
-                  }}
-                />
-                <aside className="id-card">
-                  <div className="id-card-head">
-                    <div>
-                      <h2>Account details</h2>
-                      <div className="id-card-sub">
-                        {mode === 'managed'
-                          ? 'Managed by this deployment'
-                          : 'Linked to this self-hosted deployment'}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="id-data">
-                    <div className="id-field">
-                      <div className="id-label">User ID</div>
-                      <div className="id-value-row">
-                        <div className="id-value">{profile?.user_id || 'Unavailable'}</div>
-                        {profile?.user_id && (
-                          <button
-                            type="button"
-                            className="id-copy"
-                            aria-label={copied ? 'User ID copied' : 'Copy user ID'}
-                            onClick={copyId}
-                          >
-                            {copied ? <Check width={17} /> : <Copy width={17} />}
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                    <div className="id-field">
-                      <div className="id-label">Account type</div>
-                      <div className="id-value">
-                        {mode === 'managed' ? 'Managed · mobius.you' : 'Linked · self-hosted'}
-                      </div>
-                    </div>
-                    {mode === 'linked' && (
-                      <button
-                        type="button"
-                        className="id-btn id-btn--quiet"
-                        onClick={() => setDisconnecting(true)}
-                      >
-                        Unlink mobius.you account
-                      </button>
-                    )}
-                  </div>
-                </aside>
-              </section>
+              <Deployments
+                items={data.deployments}
+                railway={railway}
+                selfHosted={mode === 'linked'}
+                onRefresh={() => {
+                  void load()
+                  void loadRailway()
+                }}
+                refreshing={loading || railwayLoading}
+                onNew={() => setCreatingDeployment(true)}
+                onManage={setManagingDeployment}
+                onConnect={() => connectRailway()}
+                onManageConnection={() => setManagingRailway(true)}
+                onReconnect={() => {
+                  setReconnecting(true)
+                  setDisconnecting(true)
+                }}
+              />
             </>
           )}
 
           {actionError && <div className="id-error" role="alert">{actionError}</div>}
-          <span className="id-sr-only" aria-live="polite">
-            {copied ? 'User ID copied.' : ''}
-          </span>
         </div>
 
         {signingIn && (

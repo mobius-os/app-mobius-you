@@ -27,7 +27,6 @@ button { user-select: none; -webkit-user-select: none; }
 .id-top,
 .id-brand,
 .id-status,
-.id-value-row,
 .id-title-row,
 .id-email {
   display: flex;
@@ -82,6 +81,39 @@ button { user-select: none; -webkit-user-select: none; }
   font-weight: 550;
   text-align: right;
 }
+
+/* The connection pill can act as a menu trigger (click to reveal Unlink). */
+.id-status-menu { position: relative; }
+.id-status--menu { display: flex; align-items: center; cursor: pointer; }
+.id-status--menu:hover {
+  border-color: color-mix(in srgb, var(--accent, #8b7cf6) 40%, var(--border, #2a2a2a));
+}
+.id-status-caret { flex: none; margin-left: 1px; opacity: .65; }
+.id-status-dropdown {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 30;
+  min-width: 220px;
+  padding: 6px;
+  border: 1px solid var(--border, #2a2a2a);
+  border-radius: 12px;
+  background: var(--surface, #171717);
+  box-shadow: 0 18px 46px rgba(0, 0, 0, .3);
+}
+.id-status-item {
+  width: 100%;
+  padding: 9px 11px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--danger, #e67a7a);
+  font-size: 13px;
+  font-weight: 550;
+  text-align: left;
+  cursor: pointer;
+}
+.id-status-item:hover { background: color-mix(in srgb, var(--danger, #d65a5a) 13%, transparent); }
 
 .id-dot {
   width: 7px;
@@ -306,8 +338,7 @@ button { user-select: none; -webkit-user-select: none; }
   line-height: 1.45;
 }
 
-.id-deployments,
-.id-data { display: grid; }
+.id-deployments { display: grid; }
 
 .id-deployment {
   min-width: 0;
@@ -359,28 +390,9 @@ button { user-select: none; -webkit-user-select: none; }
 
 .id-deploy-actions { justify-content: flex-end; }
 
-.id-data { gap: 0; }
-
-.id-field {
-  min-width: 0;
-  padding: 14px 0;
-  border-top: 1px solid var(--border-light, var(--border, #2a2a2a));
-}
-
-.id-field:first-child {
-  padding-top: 2px;
-  border-top: 0;
-}
-
 .id-label {
   margin-bottom: 6px;
   font-size: 11px;
-}
-
-.id-value-row {
-  min-width: 0;
-  justify-content: space-between;
-  gap: 8px;
 }
 
 .id-value {
@@ -794,7 +806,12 @@ button { user-select: none; -webkit-user-select: none; }
   border-bottom: 1px solid var(--border-light, var(--border, #2a2a2a));
 }
 
+.id-metrics.is-loading .id-meters { opacity: .5; }
+
 .id-metrics-runtime {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   color: var(--muted, #999);
   font-size: 12px;
 }
