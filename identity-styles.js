@@ -473,7 +473,7 @@ button { user-select: none; -webkit-user-select: none; }
 .id-handle-btn:focus-visible,
 .id-open:focus-visible,
 .id-provider:focus-visible,
-.id-input:focus-visible {
+.id-input--boxed:focus-visible {
   outline: 2px solid var(--accent, #8b7cf6);
   outline-offset: 2px;
 }
