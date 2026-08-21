@@ -796,7 +796,24 @@ function ResourceFields({
   )
 }
 
-function NewDeploymentModal({ onClose, onCreate, planLimits }) {
+function fmtUsd(value) {
+  if (typeof value !== 'number') return ''
+  return `$${Number.isInteger(value) ? value : value.toFixed(2)}`
+}
+
+function WandIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" width={props.width || 16} height={props.width || 16} fill="none"
+      stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M4.5 16.5c-1.5 1.3-2 5-2 5s3.7-.5 5-2c.7-.8.7-2.1-.1-2.9a2 2 0 0 0-2.9-.1ZM12 15l-3-3a22 22 0 0 1 8-11 11 11 0 0 1 6 6 22 22 0 0 1-11 8Z" />
+    </svg>
+  )
+}
+
+// Mirrors the mobius.you deploy composer: name + a live "included / storage"
+// launch summary, resource limits tucked behind Advanced settings, and a
+// Deploy Möbius action. Kept as a modal and on the Möbius shell theme.
+function NewDeploymentModal({ onClose, onCreate, planLimits, plan }) {
   const [name, setName] = useState('My Möbius')
   const [managedAuth, setManagedAuth] = useState(true)
   const [cpu, setCpu] = useState('')
@@ -828,13 +845,33 @@ function NewDeploymentModal({ onClose, onCreate, planLimits }) {
     }
   }
 
+  const planName = planTitle(plan)
+  const included = planLimits && typeof planLimits.included_usd === 'number'
+    ? fmtUsd(planLimits.included_usd)
+    : ''
+  const storageLabel = planLimits
+    ? fmtVolume(Number(volume) || planLimits.default_volume_mb)
+    : ''
+  const summary = []
+  if (included) {
+    summary.push(<span key="inc"><b>{included}</b> included{planName ? ` on ${planName}` : ''}</span>)
+  }
+  if (storageLabel) {
+    summary.push(<span key="sto"><b>{storageLabel}</b> persistent storage</span>)
+  }
+  const summaryRow = []
+  summary.forEach((item, index) => {
+    if (index > 0) summaryRow.push(<i key={`sep${index}`} aria-hidden="true" />)
+    summaryRow.push(item)
+  })
+
   return (
     <div className="id-modal-backdrop" onMouseDown={event => {
       if (!pending && event.target === event.currentTarget) onClose()
     }}>
       <form
         ref={dialogRef}
-        className="id-modal"
+        className="id-modal id-composer-modal"
         role="dialog"
         aria-modal="true"
         aria-labelledby="new-deployment-title"
@@ -842,52 +879,102 @@ function NewDeploymentModal({ onClose, onCreate, planLimits }) {
         tabIndex={-1}
         onSubmit={submit}
       >
-        <h2 id="new-deployment-title">New Railway deployment</h2>
-        <p>{planLimits
-          ? 'Choose resources for this Möbius, or keep your plan’s defaults.'
-          : 'Möbius will create a private Railway project using your plan defaults.'}</p>
-        <label className="id-label" htmlFor="deployment-name">Deployment name</label>
-        <div className="id-input-wrap">
+        <h2 id="new-deployment-title">Name your Möbius</h2>
+        <p className="id-composer-sub">We’ll build it in your Railway account.</p>
+
+        <label className="id-label" htmlFor="deployment-name">Name</label>
+        <div className="id-input-wrap id-input-wrap--tick">
           <input
             ref={inputRef}
             id="deployment-name"
             className="id-input"
             value={name}
             maxLength={80}
+            autoComplete="off"
+            spellCheck="false"
             disabled={pending}
             onChange={event => setName(event.target.value)}
           />
+          {name.trim() && (
+            <span className="id-tick" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round"><path d="m5 13 4 4L19 7" /></svg>
+            </span>
+          )}
         </div>
-        <ResourceFields
-          limits={planLimits}
-          cpu={cpu}
-          memory={memory}
-          volume={volume}
-          onCpu={setCpu}
-          onMemory={setMemory}
-          onVolume={setVolume}
-          disabled={pending}
-        />
-        <label className="id-check-row">
-          <input
-            type="checkbox"
-            checked={managedAuth}
-            disabled={pending}
-            onChange={event => setManagedAuth(event.target.checked)}
-          />
-          <span>
-            <strong>Use this Möbius account to sign in</strong>
-            <small>Turn this off to create a deployment with local username/password setup.</small>
-          </span>
-        </label>
+
+        {summaryRow.length > 0 && (
+          <p className="id-launch-summary">{summaryRow}</p>
+        )}
+
+        {planLimits ? (
+          <details className="id-disclosure">
+            <summary>
+              <span className="id-disclosure-title">Advanced settings</span>
+              <span className="id-disclosure-state">
+                {managedAuth ? 'Möbius sign-in on' : 'Local sign-in'}{storageLabel ? ` · ${storageLabel}` : ''}
+              </span>
+              <span className="id-disclosure-caret" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="m9 6 6 6-6 6" /></svg>
+              </span>
+            </summary>
+            <div className="id-disclosure-body">
+              <label className="id-switch">
+                <input
+                  type="checkbox"
+                  className="id-switch-input"
+                  checked={managedAuth}
+                  disabled={pending}
+                  onChange={event => setManagedAuth(event.target.checked)}
+                />
+                <span className="id-switch-track" aria-hidden="true" />
+                <span className="id-switch-copy">
+                  <strong>Sign in with Möbius</strong>
+                  <span>Use your mobius.you account here. Turn this off to create a separate username and password.</span>
+                </span>
+              </label>
+              <p className="id-eyebrow">Resource limits</p>
+              <ResourceFields
+                limits={planLimits}
+                cpu={cpu}
+                memory={memory}
+                volume={volume}
+                onCpu={setCpu}
+                onMemory={setMemory}
+                onVolume={setVolume}
+                disabled={pending}
+              />
+              <p className="id-fine">Railway bills actual usage; set spending limits in Railway.</p>
+            </div>
+          </details>
+        ) : (
+          <label className="id-check-row">
+            <input
+              type="checkbox"
+              checked={managedAuth}
+              disabled={pending}
+              onChange={event => setManagedAuth(event.target.checked)}
+            />
+            <span>
+              <strong>Sign in with Möbius</strong>
+              <small>Turn this off to create a deployment with local username/password setup.</small>
+            </span>
+          </label>
+        )}
+
         {error && <div className="id-signin-error" role="alert">{error}</div>}
-        <div className="id-modal-actions">
-          <button type="button" className="id-btn" disabled={pending} onClick={onClose}>
-            Cancel
-          </button>
-          <button type="submit" className="id-btn id-btn--primary" disabled={!name.trim() || pending}>
-            {pending ? 'Creating…' : 'Create deployment'}
-          </button>
+
+        <div className="id-composer-foot">
+          <p className="id-composer-note">
+            Möbius follows each build step until your private link is ready. You can close this and come back anytime.
+          </p>
+          <div className="id-modal-actions">
+            <button type="button" className="id-btn" disabled={pending} onClick={onClose}>
+              Cancel
+            </button>
+            <button type="submit" className="id-btn id-btn--primary id-deploy-btn" disabled={!name.trim() || pending}>
+              {pending ? 'Deploying…' : <><WandIcon width={16} /> Deploy Möbius</>}
+            </button>
+          </div>
         </div>
       </form>
     </div>
@@ -1855,6 +1942,7 @@ export default function App({ appId, token }) {
         {creatingDeployment && (
           <NewDeploymentModal
             planLimits={railway?.connection?.plan_limits}
+            plan={railway?.connection?.plan}
             onClose={() => setCreatingDeployment(false)}
             onCreate={payload => railwayAction('/deployments', {
               method: 'POST',
