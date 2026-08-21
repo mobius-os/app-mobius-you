@@ -7,6 +7,7 @@ import {
 import {
   ArrowRotateCw,
   ArrowUpRight,
+  Camera,
   Check,
   Copy,
   Lock,
@@ -719,7 +720,7 @@ function Deployments({
                   <SettingsCog width={18} />
                 </button>
               )}
-              {item.url && (
+              {item.url && !item.current && (
                 <button
                   type="button"
                   className="id-open"
@@ -929,7 +930,7 @@ function NewDeploymentModal({ onClose, onCreate, planLimits, plan }) {
                 <span className="id-switch-track" aria-hidden="true" />
                 <span className="id-switch-copy">
                   <strong>Sign in with Möbius</strong>
-                  <span>Use your mobius.you account here. Turn this off to create a separate username and password.</span>
+                  <span>Secure your Möbius with your mobius.you account. Disable this to set up a custom username and password on first boot.</span>
                 </span>
               </label>
               <p className="id-eyebrow">Resource limits</p>
@@ -943,7 +944,10 @@ function NewDeploymentModal({ onClose, onCreate, planLimits, plan }) {
                 onVolume={setVolume}
                 disabled={pending}
               />
-              <p className="id-fine">Railway bills actual usage; set spending limits in Railway.</p>
+              <p className="id-cost-note">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M12 11v5" /><path d="M12 7.5h.01" /></svg>
+                <span><strong>Möbius doesn't charge you.</strong> We use Railway to make launching your Möbius as seamless as possible; Railway bills your own account for actual usage, so set your spending limits there.</span>
+              </p>
             </div>
           </details>
         ) : (
@@ -956,7 +960,7 @@ function NewDeploymentModal({ onClose, onCreate, planLimits, plan }) {
             />
             <span>
               <strong>Sign in with Möbius</strong>
-              <small>Turn this off to create a deployment with local username/password setup.</small>
+              <small>Secure it with your mobius.you account. Disable this to set up a custom username and password on first boot.</small>
             </span>
           </label>
         )}
@@ -1784,7 +1788,7 @@ export default function App({ appId, token }) {
                       >
                         {uploading
                           ? <ArrowRotateCw className="id-spin" width={16} />
-                          : <Pencil width={16} />}
+                          : <Camera width={16} />}
                       </button>
                       <input
                         ref={fileRef}
@@ -1887,7 +1891,7 @@ export default function App({ appId, token }) {
                         className="id-btn id-btn--quiet"
                         onClick={() => setDisconnecting(true)}
                       >
-                        Disconnect account
+                        Unlink mobius.you account
                       </button>
                     )}
                   </div>

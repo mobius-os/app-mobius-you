@@ -1040,6 +1040,23 @@ button { user-select: none; -webkit-user-select: none; }
   line-height: 1.45;
 }
 
+/* Cost reassurance: Möbius takes no payment; Railway bills the user directly. */
+.id-cost-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  margin: 0;
+  padding: 11px 13px;
+  border: 1px solid var(--border, #2a2a2a);
+  border-radius: var(--id-control-radius, 12px);
+  background: var(--surface-2, #1c1c1c);
+  color: var(--muted, #999);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+.id-cost-note svg { flex: none; margin-top: 1px; opacity: .8; }
+.id-cost-note strong { color: var(--accent, #8b7cf6); font-weight: 600; }
+
 .id-composer-foot {
   display: flex;
   flex-direction: column;
