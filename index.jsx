@@ -623,9 +623,9 @@ function Deployments({
         </div>
         <div className="id-card-actions">
           {connected && (
-            <button type="button" className="id-btn id-btn--small" onClick={onNew}>
+            <button type="button" className="id-btn id-btn--small" onClick={onNew} aria-label="New deployment">
               <Plus width={16} />
-              New deployment
+              <span className="id-btn-label">New deployment</span>
             </button>
           )}
           <button

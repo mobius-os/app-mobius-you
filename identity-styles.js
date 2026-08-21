@@ -1279,9 +1279,13 @@ button { user-select: none; -webkit-user-select: none; }
   .id-card { padding: 18px; }
 
   .id-card-head { align-items: center; }
+  /* Collapse to an icon-only button by hiding the label, NOT by zeroing the
+     button font-size: the shared Icon renders <svg height="1em">, so
+     font-size:0 collapsed the "+" to zero height and left an empty box.
+     Pin the glyph to a fixed size so it never rides on inherited font-size. */
   .id-card-actions .id-btn--small { width: 38px; padding: 0; }
-  .id-card-actions .id-btn--small svg { margin: 0; }
-  .id-card-actions .id-btn--small { font-size: 0; }
+  .id-card-actions .id-btn--small .id-btn-label { display: none; }
+  .id-card-actions .id-btn--small svg { width: 17px; height: 17px; }
 
   .id-railway-callout {
     align-items: stretch;
