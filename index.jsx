@@ -993,7 +993,7 @@ function NewDeploymentModal({ onClose, onCreate, planLimits, plan }) {
               />
               <p className="id-cost-note">
                 <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M12 11v5" /><path d="M12 7.5h.01" /></svg>
-                <span><strong>Möbius doesn't charge you.</strong> We use Railway to make launching your Möbius as seamless as possible; Railway bills your own account for actual usage, so set your spending limits there.</span>
+                <span><strong>Möbius doesn't charge you.</strong> We use Railway to make launching your Möbius agents as seamless as possible; Railway bills your own account for actual usage.</span>
               </p>
             </div>
           </details>
@@ -1441,9 +1441,13 @@ function RailwayConnectionModal({
         </div>
 
         <div className="id-manage-resources">
-          {workspaces.length > 1 && (
-            <label className="id-field-block">
-              <span className="id-label">Workspace</span>
+          {/* Render the workspace field from the first paint using the name the
+             connection already carries, so it never pops in after the inventory
+             fetch. It upgrades to an interactive picker only if more than one
+             workspace is authorized. */}
+          <label className="id-field-block">
+            <span className="id-label">Workspace</span>
+            {workspaces.length > 1 ? (
               <select
                 className="id-select"
                 value={currentWorkspace}
@@ -1467,14 +1471,12 @@ function RailwayConnectionModal({
                   <option key={item.id} value={item.id}>{item.name}</option>
                 ))}
               </select>
-            </label>
-          )}
-          {workspaces.length === 1 && (
-            <div className="id-field-block">
-              <span className="id-label">Workspace</span>
-              <div className="id-value">{workspaces[0].name}</div>
-            </div>
-          )}
+            ) : (
+              <select className="id-select" disabled aria-label="Workspace" value="current">
+                <option value="current">{connection.workspace || currentWorkspace || 'Loading…'}</option>
+              </select>
+            )}
+          </label>
           <div className="id-storage-row">
             <div className="id-field-block">
               <span className="id-label">Plan</span>

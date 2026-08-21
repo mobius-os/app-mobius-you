@@ -20,7 +20,7 @@ button { user-select: none; -webkit-user-select: none; }
 }
 
 .id-shell {
-  width: min(1060px, 100%);
+  width: min(720px, 100%);
   margin: 0 auto;
 }
 
@@ -202,22 +202,24 @@ button { user-select: none; -webkit-user-select: none; }
   object-fit: cover;
 }
 
+/* Small circular "change photo" badge sitting on the avatar's corner, the way
+   most apps do it — sized to the avatar, not competing with it. */
 .id-avatar-edit {
   position: absolute;
-  right: 7px;
-  bottom: 7px;
-  width: 38px;
-  height: 38px;
+  right: 5px;
+  bottom: 5px;
+  width: 26px;
+  height: 26px;
   display: grid;
   place-items: center;
-  border: 1px solid var(--border, #333);
-  border-radius: 12px;
-  background: color-mix(in srgb, var(--surface, #171717) 92%, transparent);
-  box-shadow: 0 6px 18px rgba(0, 0, 0, .18);
-  color: var(--text, #fff);
+  border: 2px solid var(--surface, #171717);
+  border-radius: 50%;
+  background: var(--accent, #8b7cf6);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, .3);
+  color: var(--accent-contrast, #fff);
   cursor: pointer;
-  backdrop-filter: blur(10px);
 }
+.id-avatar-edit svg { width: 14px; height: 14px; }
 
 .id-title-row {
   min-width: 0;
@@ -286,12 +288,6 @@ button { user-select: none; -webkit-user-select: none; }
   color: var(--muted, #999);
 }
 
-.id-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1.35fr) minmax(270px, .65fr);
-  align-items: start;
-  gap: 18px;
-}
 
 .id-card {
   min-width: 0;
@@ -1263,8 +1259,16 @@ button { user-select: none; -webkit-user-select: none; }
     margin-bottom: 22px;
   }
 
+  /* Drop the redundant subtitle on mobile and let the connection pill size to
+     its label (the short brand yields the space) so it shows "Linked to
+     mobius.you" in full instead of ellipsizing to "Linked…". */
+  .id-kicker { display: none; }
+  .id-brand { min-width: 0; }
+  .id-brand strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
   .id-status {
-    max-width: 45%;
+    max-width: none;
+    flex: 0 0 auto;
     padding: 6px 8px;
   }
 
@@ -1305,9 +1309,7 @@ button { user-select: none; -webkit-user-select: none; }
   .id-title-row { align-items: flex-start; }
   .id-identity-caption { margin-top: 6px; font-size: 12px; }
   .id-email { margin-top: 11px; }
-  .id-private-label { display: none; }
 
-  .id-grid,
   .id-provider-list { grid-template-columns: 1fr; }
 
   .id-card { padding: 18px; }
