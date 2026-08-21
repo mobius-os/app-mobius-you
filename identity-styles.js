@@ -772,6 +772,20 @@ button { user-select: none; -webkit-user-select: none; }
   text-transform: capitalize;
 }
 
+.id-railway-manage {
+  flex: 0 0 auto;
+  margin-left: auto;
+  padding: 4px 12px;
+  border: 1px solid var(--border, #333);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text, #f5f5f5);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.id-railway-manage:hover { background: var(--surface-2, #222); }
+
 .id-railway-callout--warn {
   border-color: color-mix(in srgb, #e5a13a 42%, var(--border, #333));
   background: color-mix(in srgb, #e5a13a 12%, var(--surface-2, #222));

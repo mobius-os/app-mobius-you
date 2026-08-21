@@ -594,6 +594,7 @@ function Deployments({
   onManage,
   onConnect,
   onReconnect,
+  onManageConnection,
 }) {
   const managedById = new Map((railway?.instances || []).map(item => [item.id, item]))
   const deployments = [...items]
@@ -675,6 +676,11 @@ function Deployments({
           </span>
           {planTitle(railway.connection.plan) && (
             <span className="id-railway-plan">{planTitle(railway.connection.plan)} plan</span>
+          )}
+          {onManageConnection && (
+            <button type="button" className="id-railway-manage" onClick={onManageConnection}>
+              Manage
+            </button>
           )}
         </div>
       )}
@@ -1083,6 +1089,169 @@ function ManageDeploymentModal({ instance, onClose, onCompute, onStorage, onRetr
   )
 }
 
+function RailwayConnectionModal({
+  token, connection, onClose, onReload, onChangeAccount, onDisconnected,
+}) {
+  const [inventory, setInventory] = useState(null)
+  const [pending, setPending] = useState('')
+  const [error, setError] = useState('')
+  const [confirmDisconnect, setConfirmDisconnect] = useState(false)
+  const closeRef = useRef(null)
+  const dialogRef = useDialog(onClose, Boolean(pending), closeRef)
+
+  useEffect(() => {
+    const controller = new AbortController()
+    ;(async () => {
+      try {
+        const data = await identityRequest(token, '/railway/workspaces', { signal: controller.signal })
+        setInventory(data)
+      } catch { if (!controller.signal.aborted) setInventory({ workspaces: [], current: null }) }
+    })()
+    return () => controller.abort()
+  }, [token])
+
+  const run = async (action, work) => {
+    if (pending) return
+    setPending(action)
+    setError('')
+    try {
+      await work()
+    } catch (requestError) {
+      setError(requestError.message)
+    } finally {
+      setPending('')
+    }
+  }
+
+  const workspaces = inventory?.workspaces || []
+  const currentWorkspace = inventory?.current || ''
+
+  return (
+    <div className="id-modal-backdrop" onMouseDown={event => {
+      if (!pending && event.target === event.currentTarget) onClose()
+    }}>
+      <section
+        ref={dialogRef}
+        className="id-modal id-manage-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="railway-connection-title"
+        aria-busy={Boolean(pending)}
+        tabIndex={-1}
+      >
+        <div className="id-manage-head">
+          <div>
+            <h2 id="railway-connection-title">Railway connection</h2>
+            <p>{connection.account || 'Connected to Railway'}</p>
+          </div>
+          {connection.plan && connection.plan !== 'unknown' && (
+            <span className="id-plan">{connection.plan}</span>
+          )}
+        </div>
+
+        <div className="id-manage-resources">
+          {workspaces.length > 1 && (
+            <label className="id-field-block">
+              <span className="id-label">Workspace</span>
+              <select
+                className="id-select"
+                value={currentWorkspace}
+                disabled={Boolean(pending)}
+                onChange={event => run('workspace', async () => {
+                  await identityRequest(token, '/railway/workspace', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ workspace_id: event.target.value }),
+                  })
+                  await onReload()
+                })}
+              >
+                {workspaces.map(item => (
+                  <option key={item.id} value={item.id}>{item.name}</option>
+                ))}
+              </select>
+            </label>
+          )}
+          {workspaces.length === 1 && (
+            <div className="id-field-block">
+              <span className="id-label">Workspace</span>
+              <div className="id-value">{workspaces[0].name}</div>
+            </div>
+          )}
+          <div className="id-storage-row">
+            <div className="id-field-block">
+              <span className="id-label">Plan</span>
+              <div className="id-value">
+                {connection.plan && connection.plan !== 'unknown'
+                  ? connection.plan.charAt(0).toUpperCase() + connection.plan.slice(1)
+                  : 'Not detected yet'}
+              </div>
+            </div>
+            <button
+              type="button"
+              className="id-btn"
+              disabled={Boolean(pending)}
+              onClick={() => run('plan', async () => {
+                await identityRequest(token, '/railway/plan/refresh', { method: 'POST' })
+                await onReload()
+              })}
+            >
+              {pending === 'plan' ? 'Refreshing…' : 'Refresh plan'}
+            </button>
+          </div>
+        </div>
+
+        {connection.deploy_blocked && (
+          <div className="id-manage-error">{connection.deploy_blocked}</div>
+        )}
+        {error && <div className="id-signin-error" role="alert">{error}</div>}
+
+        <div className="id-manage-links">
+          <button
+            type="button"
+            className="id-btn"
+            disabled={Boolean(pending)}
+            onClick={() => { onClose(); onChangeAccount() }}
+          >
+            Change Railway account
+          </button>
+        </div>
+
+        {confirmDisconnect ? (
+          <div className="id-delete-confirm">
+            <strong>Disconnect Railway from Möbius?</strong>
+            <span>New deployments will need a Railway account again. Existing deployments are unaffected.</span>
+            <div>
+              <button type="button" className="id-btn" disabled={Boolean(pending)} onClick={() => setConfirmDisconnect(false)}>
+                Keep connected
+              </button>
+              <button
+                type="button"
+                className="id-btn id-btn--danger"
+                disabled={Boolean(pending)}
+                onClick={() => run('disconnect', async () => {
+                  await identityRequest(token, '/railway/disconnect', { method: 'POST' })
+                  onDisconnected()
+                })}
+              >
+                {pending === 'disconnect' ? 'Disconnecting…' : 'Disconnect Railway'}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button type="button" className="id-btn id-btn--quiet id-delete-trigger" onClick={() => setConfirmDisconnect(true)}>
+            <Trash width={16} /> Disconnect Railway
+          </button>
+        )}
+
+        <button ref={closeRef} type="button" className="id-btn id-modal-close" disabled={Boolean(pending)} onClick={onClose}>
+          Close
+        </button>
+      </section>
+    </div>
+  )
+}
+
 export default function App({ appId, token }) {
   const [data, setData] = useState(null)
   const [railway, setRailway] = useState(null)
@@ -1097,6 +1266,7 @@ export default function App({ appId, token }) {
   const [reconnecting, setReconnecting] = useState(false)
   const [creatingDeployment, setCreatingDeployment] = useState(false)
   const [managingDeployment, setManagingDeployment] = useState(null)
+  const [managingRailway, setManagingRailway] = useState(false)
   const [connectingRailway, setConnectingRailway] = useState(false)
   const [copied, setCopied] = useState(false)
   const [uploading, setUploading] = useState(false)
@@ -1241,7 +1411,7 @@ export default function App({ appId, token }) {
     return result
   }
 
-  const connectRailway = async () => {
+  const connectRailway = async (replace = false) => {
     if (connectingRailway) return
     setConnectingRailway(true)
     setRailwayError('')
@@ -1257,6 +1427,12 @@ export default function App({ appId, token }) {
       const started = await identityRequest(token, '/railway/connect/start', {
         method: 'POST',
         signal: controller.signal,
+        ...(replace
+          ? {
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ replace: true }),
+          }
+          : {}),
       })
       const authorization = new URL(started.authorization_url)
       if (authorization.protocol !== 'https:') throw new Error('Möbius returned an invalid Railway sign-in address.')
@@ -1417,7 +1593,8 @@ export default function App({ appId, token }) {
                   refreshing={loading || railwayLoading}
                   onNew={() => setCreatingDeployment(true)}
                   onManage={setManagingDeployment}
-                  onConnect={connectRailway}
+                  onConnect={() => connectRailway()}
+                  onManageConnection={() => setManagingRailway(true)}
                   onReconnect={() => {
                     setReconnecting(true)
                     setDisconnecting(true)
@@ -1543,6 +1720,19 @@ export default function App({ appId, token }) {
             })}
             onRetry={id => railwayAction(`/deployments/${id}/retry`, { method: 'POST' })}
             onDelete={id => railwayAction(`/deployments/${id}`, { method: 'DELETE' })}
+          />
+        )}
+        {managingRailway && railway?.connection && (
+          <RailwayConnectionModal
+            token={token}
+            connection={railway.connection}
+            onClose={() => setManagingRailway(false)}
+            onReload={loadRailway}
+            onChangeAccount={() => connectRailway(true)}
+            onDisconnected={() => {
+              setManagingRailway(false)
+              void loadRailway()
+            }}
           />
         )}
       </main>
