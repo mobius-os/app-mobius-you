@@ -861,6 +861,27 @@ button { user-select: none; -webkit-user-select: none; }
   transition: width .3s ease;
 }
 
+.id-recovery {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.id-recovery-note {
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--muted, #999);
+}
+
+.id-recovery-note.is-error { color: var(--danger, #f87171); }
+
+.id-recovery-hint {
+  color: var(--muted, #999);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
 .id-railway-callout--warn {
   border-color: color-mix(in srgb, #e5a13a 42%, var(--border, #333));
   background: color-mix(in srgb, #e5a13a 12%, var(--surface-2, #222));

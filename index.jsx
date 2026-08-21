@@ -970,6 +970,80 @@ function DeploymentMetrics({ token, instance }) {
   )
 }
 
+function RecoverySection({ token, instance }) {
+  // "Open Recovery" starts an ephemeral Railway worker on the account host and,
+  // when it reports ready, hands off to the worker's own web UI in a popup — the
+  // same web flow the mobius.you website uses. No credentials touch this frame.
+  const [recovery, setRecovery] = useState(null)
+  const pollRef = useRef(null)
+  const busyRef = useRef(false)
+
+  useEffect(() => () => {
+    clearTimeout(pollRef.current)
+    busyRef.current = false
+  }, [])
+
+  const poll = useCallback(async () => {
+    try {
+      const status = await identityRequest(token, `/railway/deployments/${instance.id}/recovery/status`)
+      setRecovery({ state: status.state, message: status.message, error: status.error })
+      if (status.state === 'ready' && status.open_url) {
+        window.open(status.open_url, 'mobius-recovery', 'width=940,height=760')
+        busyRef.current = false
+        return
+      }
+      if (status.state === 'starting') {
+        pollRef.current = setTimeout(poll, 2500)
+      } else {
+        busyRef.current = false
+      }
+    } catch (requestError) {
+      busyRef.current = false
+      setRecovery({ state: 'error', message: requestError.message, error: '' })
+    }
+  }, [token, instance.id])
+
+  const start = async () => {
+    if (busyRef.current) return
+    busyRef.current = true
+    setRecovery({ state: 'starting', message: 'Starting a temporary recovery worker\u2026', error: '' })
+    try {
+      await identityRequest(token, `/railway/deployments/${instance.id}/recovery`, { method: 'POST' })
+      poll()
+    } catch (requestError) {
+      busyRef.current = false
+      setRecovery({ state: 'error', message: requestError.message, error: '' })
+    }
+  }
+
+  if (!['ready', 'error'].includes(instance.status)) return null
+  const preparing = recovery?.state === 'starting'
+  return (
+    <div className="id-recovery">
+      <button type="button" className="id-btn id-recovery-btn" disabled={preparing} onClick={start}>
+        {preparing
+          ? <><ArrowRotateCw className="id-spin" width={16} /> Preparing Recovery…</>
+          : 'Open Recovery'}
+      </button>
+      {recovery && recovery.state !== 'starting' && (
+        <div
+          className={`id-recovery-note${recovery.state === 'error' ? ' is-error' : ''}`}
+          role="status"
+        >
+          {recovery.state === 'ready'
+            ? 'Recovery opened in a new window.'
+            : (recovery.error || recovery.message)}
+        </div>
+      )}
+      {!recovery && (
+        <small className="id-recovery-hint">
+          Opens a temporary, isolated worker to inspect and repair this deployment.
+        </small>
+      )}
+    </div>
+  )
+}
+
 function ManageDeploymentModal({ instance, onClose, onCompute, onStorage, onRetry, onDelete, planLimits, token }) {
   // Selects use '' to mean "plan maximum"; if the deployment already sits at the
   // plan ceiling, start there rather than on a value the picker would not list.
@@ -1137,6 +1211,8 @@ function ManageDeploymentModal({ instance, onClose, onCompute, onStorage, onRetr
             </button>
           )}
         </div>
+
+        <RecoverySection token={token} instance={instance} />
 
         {instance.actions.delete && (
           confirmDelete ? (
