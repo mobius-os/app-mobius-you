@@ -199,6 +199,48 @@ test('accepts bounded Railway management state and rejects leaked fields', () =>
   }))
 })
 
+test('accepts an optional plan_limits block and rejects a malformed one', () => {
+  const base = {
+    railway_access: 'available',
+    connection: {
+      connected: true,
+      account: 'owner@example.com',
+      workspace: 'Personal',
+      plan: 'hobby',
+      deploy_blocked: '',
+    },
+    instances: [],
+  }
+  // Absent plan_limits stays valid (older account host).
+  assert.equal(parseRailway(base), base)
+
+  const limits = {
+    cpu_choices: [1, 2, 4, 8],
+    max_cpu: 8,
+    memory_options_mb: [512, 1024, 2048, 4096, 8192],
+    max_memory_mb: 8192,
+    volume_options_mb: [500, 1000, 2000, 5000],
+    default_volume_mb: 2000,
+  }
+  const withLimits = { ...base, connection: { ...base.connection, plan_limits: limits } }
+  assert.equal(parseRailway(withLimits), withLimits)
+
+  // Malformed plan_limits (missing a field / wrong type) is rejected.
+  assert.throws(() => parseRailway({
+    ...base,
+    connection: { ...base.connection, plan_limits: { ...limits, max_cpu: '8' } },
+  }))
+  assert.throws(() => parseRailway({
+    ...base,
+    connection: { ...base.connection, plan_limits: { cpu_choices: [1] } },
+  }))
+  // An unrelated extra key on the connection is still rejected.
+  assert.throws(() => parseRailway({
+    ...base,
+    connection: { ...base.connection, surprise: true },
+  }))
+})
+
 test('broker registers before navigation and accepts only the parent-forwarded result', async () => {
   const { target, posts, parentWindow, popup, waiting } = brokerFixture()
   assert.equal(popup.navigated, null)

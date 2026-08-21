@@ -668,6 +668,24 @@ function Deployments({
           </div>
         </div>
       )}
+      {connected && railway.connection && (
+        <div className="id-railway-connection">
+          <span className="id-railway-conn-account">
+            Railway · {railway.connection.workspace || railway.connection.account || 'Connected'}
+          </span>
+          {planTitle(railway.connection.plan) && (
+            <span className="id-railway-plan">{planTitle(railway.connection.plan)} plan</span>
+          )}
+        </div>
+      )}
+      {connected && railway.connection?.deploy_blocked && (
+        <div className="id-railway-callout id-railway-callout--warn">
+          <div>
+            <strong>Railway needs attention</strong>
+            <span>{railway.connection.deploy_blocked}</span>
+          </div>
+        </div>
+      )}
       <div className="id-deployments">
         {deployments.map(item => {
           const managed = managedById.get(item.id)
@@ -714,9 +732,70 @@ function Deployments({
   )
 }
 
-function NewDeploymentModal({ onClose, onCreate }) {
+function fmtCpu(n) {
+  return `${n} vCPU`
+}
+
+function fmtMemory(mb) {
+  return mb % 1024 === 0 ? `${mb / 1024} GB` : `${mb} MB`
+}
+
+function fmtVolume(mb) {
+  return mb < 1000 ? `${mb} MB` : `${mb / 1000} GB`
+}
+
+function planTitle(label) {
+  if (!label || label === 'unknown') return ''
+  return label.charAt(0).toUpperCase() + label.slice(1)
+}
+
+// Plan-bounded CPU / RAM / (optional) storage pickers, mirroring the resource
+// choices the mobius.you website offers. `limits` is connection.plan_limits from
+// the account host; when it is absent the component renders nothing so the modal
+// gracefully falls back to plan defaults. Storage is rendered only when onVolume
+// is supplied; storageMinMb enforces Railway's grow-only rule in the manage flow.
+function ResourceFields({
+  limits, cpu, memory, volume, onCpu, onMemory, onVolume, disabled, storageMinMb = 0,
+}) {
+  if (!limits) return null
+  const cpuChoices = limits.cpu_choices.filter(value => value < limits.max_cpu)
+  const memChoices = limits.memory_options_mb.filter(value => value < limits.max_memory_mb)
+  const volChoices = limits.volume_options_mb.filter(value => value >= storageMinMb)
+  return (
+    <div className="id-resource-fields">
+      <label className="id-field-block">
+        <span className="id-label">CPU</span>
+        <select className="id-select" value={cpu} disabled={disabled} onChange={event => onCpu(event.target.value)}>
+          <option value="">Plan maximum · {fmtCpu(limits.max_cpu)}</option>
+          {cpuChoices.map(value => <option key={value} value={value}>{fmtCpu(value)}</option>)}
+        </select>
+      </label>
+      <label className="id-field-block">
+        <span className="id-label">RAM</span>
+        <select className="id-select" value={memory} disabled={disabled} onChange={event => onMemory(event.target.value)}>
+          <option value="">Plan maximum · {fmtMemory(limits.max_memory_mb)}</option>
+          {memChoices.map(value => <option key={value} value={value}>{fmtMemory(value)}</option>)}
+        </select>
+      </label>
+      {onVolume && (
+        <label className="id-field-block">
+          <span className="id-label">Storage</span>
+          <select className="id-select" value={volume} disabled={disabled} onChange={event => onVolume(event.target.value)}>
+            {volChoices.map(value => <option key={value} value={value}>{fmtVolume(value)}</option>)}
+          </select>
+          {storageMinMb > 0 && <small>Railway volumes can only grow.</small>}
+        </label>
+      )}
+    </div>
+  )
+}
+
+function NewDeploymentModal({ onClose, onCreate, planLimits }) {
   const [name, setName] = useState('My Möbius')
   const [managedAuth, setManagedAuth] = useState(true)
+  const [cpu, setCpu] = useState('')
+  const [memory, setMemory] = useState('')
+  const [volume, setVolume] = useState(planLimits ? String(planLimits.default_volume_mb) : '')
   const [pending, setPending] = useState(false)
   const [error, setError] = useState('')
   const inputRef = useRef(null)
@@ -731,9 +810,9 @@ function NewDeploymentModal({ onClose, onCreate }) {
       await onCreate({
         name: name.trim(),
         managed_auth: managedAuth,
-        cpu: null,
-        memory_mb: null,
-        volume_mb: null,
+        cpu: cpu ? Number(cpu) : null,
+        memory_mb: memory ? Number(memory) : null,
+        volume_mb: volume ? Number(volume) : null,
       })
       onClose()
     } catch (requestError) {
@@ -758,7 +837,9 @@ function NewDeploymentModal({ onClose, onCreate }) {
         onSubmit={submit}
       >
         <h2 id="new-deployment-title">New Railway deployment</h2>
-        <p>Möbius will create a private Railway project using your plan defaults.</p>
+        <p>{planLimits
+          ? 'Choose resources for this Möbius, or keep your plan’s defaults.'
+          : 'Möbius will create a private Railway project using your plan defaults.'}</p>
         <label className="id-label" htmlFor="deployment-name">Deployment name</label>
         <div className="id-input-wrap">
           <input
@@ -771,6 +852,16 @@ function NewDeploymentModal({ onClose, onCreate }) {
             onChange={event => setName(event.target.value)}
           />
         </div>
+        <ResourceFields
+          limits={planLimits}
+          cpu={cpu}
+          memory={memory}
+          volume={volume}
+          onCpu={setCpu}
+          onMemory={setMemory}
+          onVolume={setVolume}
+          disabled={pending}
+        />
         <label className="id-check-row">
           <input
             type="checkbox"
@@ -797,10 +888,20 @@ function NewDeploymentModal({ onClose, onCreate }) {
   )
 }
 
-function ManageDeploymentModal({ instance, onClose, onCompute, onStorage, onRetry, onDelete }) {
-  const [cpu, setCpu] = useState(instance.resources.cpu || '')
-  const [memory, setMemory] = useState(instance.resources.memory_mb || '')
-  const [volume, setVolume] = useState(instance.resources.volume_size_mb || '')
+function ManageDeploymentModal({ instance, onClose, onCompute, onStorage, onRetry, onDelete, planLimits }) {
+  // Selects use '' to mean "plan maximum"; if the deployment already sits at the
+  // plan ceiling, start there rather than on a value the picker would not list.
+  const [cpu, setCpu] = useState(() => {
+    const current = instance.resources.cpu ? String(instance.resources.cpu) : ''
+    return planLimits && Number(current) >= planLimits.max_cpu ? '' : current
+  })
+  const [memory, setMemory] = useState(() => {
+    const current = instance.resources.memory_mb ? String(instance.resources.memory_mb) : ''
+    return planLimits && Number(current) >= planLimits.max_memory_mb ? '' : current
+  })
+  const [volume, setVolume] = useState(
+    instance.resources.volume_size_mb ? String(instance.resources.volume_size_mb) : '',
+  )
   const [pending, setPending] = useState('')
   const [error, setError] = useState('')
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -843,29 +944,42 @@ function ManageDeploymentModal({ instance, onClose, onCompute, onStorage, onRetr
         </div>
 
         {instance.actions.edit_resources && (
-          <div className="id-resource-grid">
-            <label>
-              <span className="id-label">CPU</span>
-              <input
-                className="id-input id-input--boxed"
-                inputMode="numeric"
-                value={cpu}
-                placeholder="Plan maximum"
+          <div className="id-manage-resources">
+            {planLimits ? (
+              <ResourceFields
+                limits={planLimits}
+                cpu={cpu}
+                memory={memory}
+                onCpu={setCpu}
+                onMemory={setMemory}
                 disabled={Boolean(pending)}
-                onChange={event => setCpu(event.target.value.replace(/\D/g, ''))}
               />
-            </label>
-            <label>
-              <span className="id-label">RAM (MB)</span>
-              <input
-                className="id-input id-input--boxed"
-                inputMode="numeric"
-                value={memory}
-                placeholder="Plan maximum"
-                disabled={Boolean(pending)}
-                onChange={event => setMemory(event.target.value.replace(/\D/g, ''))}
-              />
-            </label>
+            ) : (
+              <div className="id-resource-fields">
+                <label className="id-field-block">
+                  <span className="id-label">CPU</span>
+                  <input
+                    className="id-input id-input--boxed"
+                    inputMode="numeric"
+                    value={cpu}
+                    placeholder="Plan maximum"
+                    disabled={Boolean(pending)}
+                    onChange={event => setCpu(event.target.value.replace(/\D/g, ''))}
+                  />
+                </label>
+                <label className="id-field-block">
+                  <span className="id-label">RAM (MB)</span>
+                  <input
+                    className="id-input id-input--boxed"
+                    inputMode="numeric"
+                    value={memory}
+                    placeholder="Plan maximum"
+                    disabled={Boolean(pending)}
+                    onChange={event => setMemory(event.target.value.replace(/\D/g, ''))}
+                  />
+                </label>
+              </div>
+            )}
             <button
               type="button"
               className="id-btn id-resource-save"
@@ -877,31 +991,45 @@ function ManageDeploymentModal({ instance, onClose, onCompute, onStorage, onRetr
             >
               {pending === 'compute' ? 'Updating…' : 'Update resources'}
             </button>
-            {instance.resources.volume_size_mb && (
-              <label>
-                <span className="id-label">Storage (MB)</span>
-                <input
-                  className="id-input id-input--boxed"
-                  inputMode="numeric"
-                  value={volume}
-                  disabled={Boolean(pending)}
-                  onChange={event => setVolume(event.target.value.replace(/\D/g, ''))}
-                />
-                <small>Railway volumes can only grow.</small>
-              </label>
-            )}
-            {instance.resources.volume_size_mb && (
-              <button
-                type="button"
-                className="id-btn id-resource-save"
-                disabled={Boolean(pending) || !volume}
-                onClick={() => run('storage', () => onStorage(instance.id, {
-                  volume_mb: Number(volume),
-                }))}
-              >
-                {pending === 'storage' ? 'Growing…' : 'Grow storage'}
-              </button>
-            )}
+            {instance.resources.volume_size_mb ? (
+              <div className="id-storage-row">
+                <label className="id-field-block">
+                  <span className="id-label">Storage</span>
+                  {planLimits ? (
+                    <select
+                      className="id-select"
+                      value={volume}
+                      disabled={Boolean(pending)}
+                      onChange={event => setVolume(event.target.value)}
+                    >
+                      {planLimits.volume_options_mb
+                        .filter(value => value >= instance.resources.volume_size_mb)
+                        .map(value => <option key={value} value={value}>{fmtVolume(value)}</option>)}
+                    </select>
+                  ) : (
+                    <input
+                      className="id-input id-input--boxed"
+                      inputMode="numeric"
+                      value={volume}
+                      disabled={Boolean(pending)}
+                      onChange={event => setVolume(event.target.value.replace(/\D/g, ''))}
+                    />
+                  )}
+                  <small>Railway volumes can only grow.</small>
+                </label>
+                <button
+                  type="button"
+                  className="id-btn id-resource-save"
+                  disabled={Boolean(pending) || !volume
+                    || (Boolean(planLimits) && Number(volume) <= instance.resources.volume_size_mb)}
+                  onClick={() => run('storage', () => onStorage(instance.id, {
+                    volume_mb: Number(volume),
+                  }))}
+                >
+                  {pending === 'storage' ? 'Growing…' : 'Grow storage'}
+                </button>
+              </div>
+            ) : null}
           </div>
         )}
 
@@ -1389,6 +1517,7 @@ export default function App({ appId, token }) {
         )}
         {creatingDeployment && (
           <NewDeploymentModal
+            planLimits={railway?.connection?.plan_limits}
             onClose={() => setCreatingDeployment(false)}
             onCreate={payload => railwayAction('/deployments', {
               method: 'POST',
@@ -1400,6 +1529,7 @@ export default function App({ appId, token }) {
         {managingDeployment && (
           <ManageDeploymentModal
             instance={managingDeployment}
+            planLimits={railway?.connection?.plan_limits}
             onClose={() => setManagingDeployment(null)}
             onCompute={(id, payload) => railwayAction(`/deployments/${id}/compute`, {
               method: 'PATCH',

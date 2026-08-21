@@ -182,6 +182,30 @@ function validRailwayInstance(instance) {
     && Object.values(actions).every(value => typeof value === 'boolean')
 }
 
+function positiveIntList(value, max = 64) {
+  return Array.isArray(value)
+    && value.length >= 1
+    && value.length <= max
+    && value.every(item => Number.isInteger(item) && item > 0)
+}
+
+// Optional plan-derived option ranges the account host may attach to the
+// connection so the app can render the same plan-bounded resource pickers the
+// mobius.you website shows. Absent on older hosts — treated as "unknown", the
+// app then omits the pickers rather than guessing limits.
+function validPlanLimits(value) {
+  return exactKeys(value, [
+    'cpu_choices', 'max_cpu', 'memory_options_mb',
+    'max_memory_mb', 'volume_options_mb', 'default_volume_mb',
+  ])
+    && positiveIntList(value.cpu_choices)
+    && Number.isInteger(value.max_cpu) && value.max_cpu > 0
+    && positiveIntList(value.memory_options_mb)
+    && Number.isInteger(value.max_memory_mb) && value.max_memory_mb > 0
+    && positiveIntList(value.volume_options_mb)
+    && Number.isInteger(value.default_volume_mb) && value.default_volume_mb > 0
+}
+
 export function parseRailway(value) {
   if (
     !exactKeys(value, ['railway_access', 'connection', 'instances'])
@@ -202,7 +226,7 @@ export function parseRailway(value) {
     if (
       !exactKeys(connection, [
         'connected', 'account', 'workspace', 'plan', 'deploy_blocked',
-      ])
+      ], ['plan_limits'])
       || typeof connection.connected !== 'boolean'
       || typeof connection.account !== 'string'
       || connection.account.length > 320
@@ -212,6 +236,7 @@ export function parseRailway(value) {
       || connection.plan.length > 32
       || typeof connection.deploy_blocked !== 'string'
       || connection.deploy_blocked.length > 360
+      || (connection.plan_limits !== undefined && !validPlanLimits(connection.plan_limits))
     ) throw new Error('Möbius returned an invalid Railway connection.')
   }
   return value
