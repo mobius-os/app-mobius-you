@@ -786,6 +786,81 @@ button { user-select: none; -webkit-user-select: none; }
 
 .id-railway-manage:hover { background: var(--surface-2, #222); }
 
+.id-metrics {
+  display: flex;
+  flex-direction: column;
+  gap: 13px;
+  padding: 2px 0 17px;
+  border-bottom: 1px solid var(--border-light, var(--border, #2a2a2a));
+}
+
+.id-metrics-runtime {
+  color: var(--muted, #999);
+  font-size: 12px;
+}
+
+.id-metrics-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0 17px;
+  color: var(--muted, #999);
+  font-size: 12px;
+  border-bottom: 1px solid var(--border-light, var(--border, #2a2a2a));
+}
+
+.id-meters {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+.id-meter {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.id-meter-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.id-meter-label {
+  color: var(--muted, #999);
+  font-size: 10px;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+}
+
+.id-meter-value {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text, #f5f5f5);
+  font-size: 12px;
+}
+
+.id-meter-limit { color: var(--muted, #999); }
+
+.id-meter-track {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--surface-2, #222);
+  overflow: hidden;
+}
+
+.id-meter-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--accent, #8b7cf6);
+  transition: width .3s ease;
+}
+
 .id-railway-callout--warn {
   border-color: color-mix(in srgb, #e5a13a 42%, var(--border, #333));
   background: color-mix(in srgb, #e5a13a 12%, var(--surface-2, #222));
@@ -1017,6 +1092,7 @@ button { user-select: none; -webkit-user-select: none; }
   .id-resource-grid { grid-template-columns: 1fr; }
   .id-resource-save { grid-column: auto; }
   .id-resource-fields { grid-template-columns: 1fr; }
+  .id-meters { grid-template-columns: 1fr; }
   .id-storage-row { grid-template-columns: 1fr; align-items: stretch; }
   .id-storage-row .id-btn { width: 100%; }
   .id-manage-links { display: grid; grid-template-columns: 1fr; }

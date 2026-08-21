@@ -894,7 +894,83 @@ function NewDeploymentModal({ onClose, onCreate, planLimits }) {
   )
 }
 
-function ManageDeploymentModal({ instance, onClose, onCompute, onStorage, onRetry, onDelete, planLimits }) {
+function meterPercent(value) {
+  const parsed = parseFloat(String(value ?? '').replace('%', ''))
+  return Number.isFinite(parsed) ? Math.max(0, Math.min(100, parsed)) : 0
+}
+
+function MetricMeter({ label, value, limit, percent }) {
+  const pct = meterPercent(percent)
+  return (
+    <div className="id-meter">
+      <div className="id-meter-head">
+        <span className="id-meter-label">{label}</span>
+        <span className="id-meter-value">
+          {value || '—'}{limit ? <span className="id-meter-limit"> / {limit}</span> : null}
+        </span>
+      </div>
+      <div className="id-meter-track">
+        <div className="id-meter-fill" style={{ width: `${pct}%` }} />
+      </div>
+    </div>
+  )
+}
+
+function DeploymentMetrics({ token, instance }) {
+  const [metrics, setMetrics] = useState(null)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    if (instance.status !== 'ready') return undefined
+    const controller = new AbortController()
+    setMetrics(null)
+    setError('')
+    ;(async () => {
+      try {
+        const data = await identityRequest(
+          token, `/railway/deployments/${instance.id}/metrics`, { signal: controller.signal },
+        )
+        if (!controller.signal.aborted) setMetrics(data)
+      } catch (requestError) {
+        if (!controller.signal.aborted) setError(requestError.message)
+      }
+    })()
+    return () => controller.abort()
+  }, [instance.id, instance.status, token])
+
+  if (instance.status !== 'ready') return null
+  if (error) return <div className="id-metrics-note">Live metrics are unavailable right now.</div>
+  if (!metrics) {
+    return (
+      <div className="id-metrics-note" role="status">
+        <ArrowRotateCw className="id-spin" width={14} aria-hidden="true" /> Loading live metrics…
+      </div>
+    )
+  }
+  const runtime = metrics.runtime || {}
+  const runtimeBits = [runtime.status_label, runtime.region_label, runtime.data_status].filter(Boolean)
+  return (
+    <div className="id-metrics">
+      {runtimeBits.length > 0 && (
+        <div className="id-metrics-runtime">{runtimeBits.join(' · ')}</div>
+      )}
+      <div className="id-meters">
+        <MetricMeter label="CPU" value={metrics.cpu?.label} limit={metrics.cpu?.limit_label} percent={metrics.cpu?.percent} />
+        <MetricMeter label="RAM" value={metrics.memory?.label} limit={metrics.memory?.limit_label} percent={metrics.memory?.percent} />
+        <MetricMeter label="Storage" value={metrics.volume?.used_label} limit={metrics.volume?.allocated_label} percent={metrics.volume?.percent} />
+        <MetricMeter
+          label="Network"
+          value={metrics.network?.rx_label || metrics.network?.tx_label
+            ? `↓ ${metrics.network?.rx_label || '0'} · ↑ ${metrics.network?.tx_label || '0'}`
+            : ''}
+          percent={metrics.network?.percent}
+        />
+      </div>
+    </div>
+  )
+}
+
+function ManageDeploymentModal({ instance, onClose, onCompute, onStorage, onRetry, onDelete, planLimits, token }) {
   // Selects use '' to mean "plan maximum"; if the deployment already sits at the
   // plan ceiling, start there rather than on a value the picker would not list.
   const [cpu, setCpu] = useState(() => {
@@ -948,6 +1024,8 @@ function ManageDeploymentModal({ instance, onClose, onCompute, onStorage, onRetr
           </div>
           <span className="id-plan">{instance.resources.plan}</span>
         </div>
+
+        <DeploymentMetrics token={token} instance={instance} />
 
         {instance.actions.edit_resources && (
           <div className="id-manage-resources">
@@ -1706,6 +1784,7 @@ export default function App({ appId, token }) {
         {managingDeployment && (
           <ManageDeploymentModal
             instance={managingDeployment}
+            token={token}
             planLimits={railway?.connection?.plan_limits}
             onClose={() => setManagingDeployment(null)}
             onCompute={(id, payload) => railwayAction(`/deployments/${id}/compute`, {
