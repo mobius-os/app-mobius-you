@@ -1,7 +1,7 @@
 {
   "id": "identity",
   "name": "Möbius · You",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Your Möbius account, profile and active deployments.",
   "author": "mobius-os",
   "license": "MIT",
@@ -10,6 +10,7 @@
   "icon": "icon.png",
   "offline_capable": false,
   "permissions": { "identity_manage": true, "railway_manage": true },
+  "requires": ["identity_manage", "railway_manage"],
   "runtime": {
     "imports": ["react", "react-dom", "@openai/apps-sdk-ui/components/Icon"],
     "esm_deps": []
