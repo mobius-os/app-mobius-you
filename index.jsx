@@ -8,11 +8,13 @@ import {
   ArrowRotateCw,
   ArrowUpRight,
   Camera,
+  CheckCircle,
+  ChevronRight,
   Lock,
   Pencil,
   Plus,
-  SettingsCog,
   Trash,
+  Warning,
 } from '@openai/apps-sdk-ui/components/Icon'
 
 import {
@@ -171,47 +173,49 @@ function Brand({ appId, status, onUnlink }) {
 
   return (
     <header className="id-top">
-      <div className="id-brand">
-        <img src={`/api/apps/${appId}/icon?size=64`} alt="" />
-        <div>
-          <strong>Möbius · You</strong>
-          <div className="id-kicker">your Möbius account</div>
+      <div className="id-top-inner">
+        <div className="id-brand">
+          <img src={`/api/apps/${appId}/icon?size=64`} alt="" />
+          <div>
+            <strong>Möbius · You</strong>
+            <div className="id-kicker">Your Möbius account</div>
+          </div>
         </div>
-      </div>
-      {onUnlink ? (
-        // The connection pill doubles as a menu: click "Linked to mobius.you"
-        // to reveal the unlink action, keeping the account body uncluttered.
-        <div className="id-status-menu" ref={menuRef}>
-          <button
-            type="button"
-            className="id-status id-status--menu"
-            aria-haspopup="menu"
-            aria-expanded={menuOpen}
-            onClick={() => setMenuOpen(open => !open)}
-          >
+        {onUnlink ? (
+          // The connection pill doubles as a menu: click "Linked to mobius.you"
+          // to reveal the unlink action, keeping the account body uncluttered.
+          <div className="id-status-menu" ref={menuRef}>
+            <button
+              type="button"
+              className="id-status id-status--menu"
+              aria-haspopup="menu"
+              aria-expanded={menuOpen}
+              onClick={() => setMenuOpen(open => !open)}
+            >
+              <span className={`id-dot id-dot--${status.tone}`} aria-hidden="true" />
+              <span className="id-status-label">{status.label}</span>
+              <svg className="id-status-caret" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
+            </button>
+            {menuOpen && (
+              <div className="id-status-dropdown" role="menu">
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="id-status-item"
+                  onClick={() => { setMenuOpen(false); onUnlink() }}
+                >
+                  Unlink mobius.you account
+                </button>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="id-status" role="status" aria-live="polite">
             <span className={`id-dot id-dot--${status.tone}`} aria-hidden="true" />
             <span className="id-status-label">{status.label}</span>
-            <svg className="id-status-caret" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
-          </button>
-          {menuOpen && (
-            <div className="id-status-dropdown" role="menu">
-              <button
-                type="button"
-                role="menuitem"
-                className="id-status-item"
-                onClick={() => { setMenuOpen(false); onUnlink() }}
-              >
-                Unlink mobius.you account
-              </button>
-            </div>
-          )}
-        </div>
-      ) : (
-        <div className="id-status" role="status" aria-live="polite">
-          <span className={`id-dot id-dot--${status.tone}`} aria-hidden="true" />
-          <span className="id-status-label">{status.label}</span>
-        </div>
-      )}
+          </div>
+        )}
+      </div>
     </header>
   )
 }
@@ -246,6 +250,62 @@ function ProfileAvatar({ profile, token }) {
   }, [profile?.avatar_url, token])
 
   return source ? <img src={source} alt="" /> : initials(profile)
+}
+
+/* The identity "membership card": a tactile dark card with an iridescent edge.
+   On pointer devices it tilts toward the cursor and its sheen follows; on
+   touch devices it floats gently on its own. Reduced motion disables both. */
+function IdentityCard({ children, footer }) {
+  const cardRef = useRef(null)
+  const motionRef = useRef({ hover: false, reduced: false })
+
+  useEffect(() => {
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    const hover = window.matchMedia('(hover: hover)').matches
+    motionRef.current = { hover, reduced }
+    const card = cardRef.current
+    if (!card || reduced || hover) return undefined
+    let t = 0
+    const timer = setInterval(() => {
+      t += 0.02
+      card.style.transform =
+        `rotateX(${(Math.sin(t) * 2.6).toFixed(2)}deg) rotateY(${(Math.cos(t * 0.8) * 3.2).toFixed(2)}deg)`
+      card.style.setProperty('--id-holo', `${(210 + Math.sin(t * 0.6) * 60).toFixed(0)}deg`)
+    }, 50)
+    return () => clearInterval(timer)
+  }, [])
+
+  const onMove = event => {
+    const card = cardRef.current
+    const { hover, reduced } = motionRef.current
+    if (!card || !hover || reduced) return
+    const rect = card.getBoundingClientRect()
+    const px = (event.clientX - rect.left) / rect.width
+    const py = (event.clientY - rect.top) / rect.height
+    card.style.transform =
+      `rotateX(${((0.5 - py) * 10).toFixed(2)}deg) rotateY(${((px - 0.5) * 12).toFixed(2)}deg)`
+    card.style.setProperty('--id-mx', `${(px * 100).toFixed(1)}%`)
+    card.style.setProperty('--id-my', `${(py * 100).toFixed(1)}%`)
+    card.style.setProperty('--id-holo', `${(180 + px * 120).toFixed(0)}deg`)
+  }
+
+  const onLeave = () => {
+    const card = cardRef.current
+    if (card) card.style.transform = ''
+  }
+
+  return (
+    <div className="id-tilt-zone" onPointerMove={onMove} onPointerLeave={onLeave}>
+      <div className="id-card-3d" ref={cardRef}>
+        <div className="id-cardhead">
+          <span className="id-cardword">Möbius · You</span>
+          <span className="id-cardring" aria-hidden="true" />
+        </div>
+        {children}
+        {footer}
+      </div>
+    </div>
+  )
 }
 
 function HandleModal({ current, onClose, onSave, required = false }) {
@@ -631,12 +691,29 @@ function DisconnectModal({ token, onClose, onDisconnected, reconnecting = false 
   )
 }
 
+/* Presentation for a deployment's status pill. Derived from the fields the
+   bridge already returns (status, current_step, last_error); unknown statuses
+   fall back to a quiet neutral pill. */
+function deploymentState(instance) {
+  const status = String(instance?.status || '').toLowerCase()
+  const step = String(instance?.current_step || '').trim()
+  const error = String(instance?.last_error || '').trim()
+  if (status === 'ready' || status === 'active') {
+    return { label: 'Active', tone: 'success', detail: step && step.toLowerCase() !== 'ready' ? step : '' }
+  }
+  if (status === 'queued' || status === 'creating' || status === 'deploying') {
+    return { label: 'Deploying', tone: 'progress', detail: step }
+  }
+  if (status === 'error') {
+    return { label: 'Needs attention', tone: 'danger', detail: error || step }
+  }
+  return { label: instance?.status || 'Status unavailable', tone: 'muted', detail: error }
+}
+
 function Deployments({
   items,
   railway,
   selfHosted,
-  onRefresh,
-  refreshing,
   onNew,
   onManage,
   onConnect,
@@ -664,27 +741,7 @@ function Deployments({
     <article className="id-card">
       <div className="id-card-head">
         <div>
-          <h2>Active deployments</h2>
-          <div className="id-card-sub">
-            This Möbius is always listed, even without account access
-          </div>
-        </div>
-        <div className="id-card-actions">
-          {connected && (
-            <button type="button" className="id-btn id-btn--small" onClick={onNew} aria-label="New deployment">
-              <Plus width={16} />
-              <span className="id-btn-label">New deployment</span>
-            </button>
-          )}
-          <button
-            type="button"
-            className="id-copy"
-            disabled={refreshing}
-            aria-label={refreshing ? 'Refreshing deployments' : 'Refresh deployments'}
-            onClick={onRefresh}
-          >
-            <ArrowRotateCw className={refreshing ? 'id-spin' : ''} width={17} />
-          </button>
+          <h2>Your deployments</h2>
         </div>
       </div>
       {railway?.railway_access === 'reconnect' && (
@@ -719,21 +776,6 @@ function Deployments({
           </div>
         </div>
       )}
-      {connected && railway.connection && (
-        <div className="id-railway-connection">
-          <span className="id-railway-conn-account">
-            Railway · {railway.connection.workspace || railway.connection.account || 'Connected'}
-          </span>
-          {planTitle(railway.connection.plan) && (
-            <span className="id-railway-plan">{planTitle(railway.connection.plan)} plan</span>
-          )}
-          {onManageConnection && (
-            <button type="button" className="id-railway-manage" onClick={onManageConnection}>
-              Manage
-            </button>
-          )}
-        </div>
-      )}
       {connected && railway.connection?.deploy_blocked && (
         <div className="id-railway-callout id-railway-callout--warn">
           <div>
@@ -745,29 +787,57 @@ function Deployments({
       <div className="id-deployments">
         {deployments.map(item => {
           const managed = managedById.get(item.id)
+          const state = deploymentState(managed || item)
+          const StateIcon = state.tone === 'success'
+            ? CheckCircle
+            : state.tone === 'danger'
+              ? Warning
+              : state.tone === 'progress'
+                ? ArrowRotateCw
+                : null
           return (
           <div className="id-deployment" key={item.id}>
             <div className="id-deploy-mark">
               <img src="/moebius.png" alt="" />
             </div>
-            <div>
-              <div className="id-deploy-name">{item.name}</div>
-              <div className="id-deploy-meta">
-                {managed?.current_step || item.status}
-                {item.region ? ` · ${item.region}` : ''}
-                {item.current && selfHosted ? ' · Self-hosted' : ''}
-                {item.current ? ' · This deployment' : ''}
+            <div className="id-deploy-copy">
+              <div className="id-deploy-name-row">
+                <div className="id-deploy-name">{item.name}</div>
+                {item.current && <span className="id-current-chip">You're here</span>}
               </div>
+              {(item.region || (item.current && selfHosted)) && (
+                <div className="id-deploy-meta">
+                  {item.region || ''}
+                  {item.region && item.current && selfHosted ? ' · ' : ''}
+                  {item.current && selfHosted ? 'Self-hosted' : ''}
+                </div>
+              )}
+              {state.detail && state.detail !== state.label && (
+                <div className={`id-deploy-detail id-deploy-detail--${state.tone}`}>
+                  {state.detail}
+                </div>
+              )}
             </div>
             <div className="id-deploy-actions">
+              <span className={`id-status-pill id-status-pill--${state.tone}`}>
+                {StateIcon && (
+                  <StateIcon
+                    className={state.tone === 'progress' ? 'id-spin' : ''}
+                    width={13}
+                    aria-hidden="true"
+                  />
+                )}
+                {state.label}
+              </span>
               {managed && (
                 <button
                   type="button"
-                  className="id-open"
+                  className={`id-deploy-manage${state.tone === 'danger' ? ' is-attention' : ''}`}
                   aria-label={`Manage ${item.name}`}
                   onClick={() => onManage(managed)}
                 >
-                  <SettingsCog width={18} />
+                  <span>Manage</span>
+                  <ChevronRight width={15} />
                 </button>
               )}
               {item.url && !item.current && (
@@ -785,6 +855,28 @@ function Deployments({
           )
         })}
       </div>
+      {connected && (
+        <button type="button" className="id-add-row" onClick={onNew}>
+          <span className="id-add-plus" aria-hidden="true"><Plus width={17} /></span>
+          New deployment
+        </button>
+      )}
+      {connected && railway.connection && (
+        <div className="id-dep-foot">
+          <span className="id-railway-conn-account">
+            Hosted with Railway · {railway.connection.workspace || railway.connection.account || 'Connected'}
+          </span>
+          {planTitle(railway.connection.plan) && (
+            <span className="id-railway-plan">{planTitle(railway.connection.plan)}</span>
+          )}
+          {onManageConnection && (
+            <button type="button" className="id-railway-manage" onClick={onManageConnection}>
+              Manage
+              <ChevronRight width={13} aria-hidden="true" />
+            </button>
+          )}
+        </div>
+      )}
     </article>
   )
 }
@@ -1580,10 +1672,51 @@ function RailwayConnectionModal({
   )
 }
 
+function IdentityLoading({ appId }) {
+  return (
+    <>
+      <style>{IDENTITY_STYLES}</style>
+      <main className="id-root" aria-busy="true">
+        <span className="id-sr-only" role="status">Loading your account…</span>
+        <Brand
+          appId={appId}
+          status={{ label: 'Checking account…', tone: 'muted' }}
+        />
+        <div className="id-scroll">
+          <div className="id-shell id-loading-layout" aria-hidden="true">
+            <section className="id-hero id-loading-hero">
+              <div className="id-skeleton id-loading-avatar" />
+              <div className="id-loading-profile">
+                <div className="id-skeleton id-loading-title" />
+                <div className="id-skeleton id-loading-line" />
+                <div className="id-skeleton id-loading-email" />
+              </div>
+            </section>
+            <article className="id-card id-loading-card">
+              <div className="id-card-head">
+                <div>
+                  <div className="id-skeleton id-loading-section-title" />
+                  <div className="id-skeleton id-loading-line id-loading-line--short" />
+                </div>
+              </div>
+              <div className="id-deployment">
+                <div className="id-skeleton id-loading-deploy-mark" />
+                <div>
+                  <div className="id-skeleton id-loading-deploy-name" />
+                  <div className="id-skeleton id-loading-line id-loading-line--deployment" />
+                </div>
+              </div>
+            </article>
+          </div>
+        </div>
+      </main>
+    </>
+  )
+}
+
 export default function App({ appId, token }) {
   const [data, setData] = useState(null)
   const [railway, setRailway] = useState(null)
-  const [railwayLoading, setRailwayLoading] = useState(false)
   const [railwayError, setRailwayError] = useState('')
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
@@ -1623,17 +1756,16 @@ export default function App({ appId, token }) {
 
   const loadRailway = useCallback(async ({ quiet = false } = {}) => {
     const sequence = ++railwaySequenceRef.current
-    if (!quiet) setRailwayLoading(true)
-    setRailwayError('')
+    if (!quiet) setRailwayError('')
     try {
       const next = await identityRequest(token, '/railway')
       if (railwaySequenceRef.current === sequence) setRailway(next)
       return next
     } catch (requestError) {
-      if (railwaySequenceRef.current === sequence) setRailwayError(requestError.message)
+      if (!quiet && railwaySequenceRef.current === sequence) {
+        setRailwayError(requestError.message)
+      }
       return null
-    } finally {
-      if (!quiet && railwaySequenceRef.current === sequence) setRailwayLoading(false)
     }
   }, [token])
 
@@ -1650,17 +1782,27 @@ export default function App({ appId, token }) {
     railwayConnectAbortRef.current?.abort()
   }, [])
 
+  /* The page keeps itself fresh instead of showing a refresh button: coming
+     back to the tab (or the app pane regaining focus) quietly reloads. */
+  const accountMode = data?.account_mode
+  useEffect(() => {
+    const refresh = () => {
+      if (document.visibilityState !== 'visible') return
+      void load()
+      if (accountMode === 'linked' || accountMode === 'managed') {
+        void loadRailway({ quiet: true })
+      }
+    }
+    window.addEventListener('focus', refresh)
+    document.addEventListener('visibilitychange', refresh)
+    return () => {
+      window.removeEventListener('focus', refresh)
+      document.removeEventListener('visibilitychange', refresh)
+    }
+  }, [load, loadRailway, accountMode])
+
   if (!data && loading) {
-    return (
-      <>
-        <style>{IDENTITY_STYLES}</style>
-        <main className="id-root" aria-busy="true">
-          <div className="id-loading" role="status" aria-label="Loading identity">
-            <ArrowRotateCw className="id-spin" width={24} aria-hidden="true" />
-          </div>
-        </main>
-      </>
-    )
+    return <IdentityLoading appId={appId} />
   }
 
   if (!data) {
@@ -1668,15 +1810,17 @@ export default function App({ appId, token }) {
       <>
         <style>{IDENTITY_STYLES}</style>
         <main className="id-root">
-          <div className="id-shell">
-            <Brand appId={appId} status={accountStatus(null)} />
-            <section className="id-card id-fatal" role="alert">
-              <h1>We couldn’t check your account.</h1>
-              <p>{loadError}</p>
-              <button type="button" className="id-btn" disabled={loading} onClick={load}>
-                {loading ? 'Trying again…' : 'Try again'}
-              </button>
-            </section>
+          <Brand appId={appId} status={accountStatus(null)} />
+          <div className="id-scroll">
+            <div className="id-shell">
+              <section className="id-card id-fatal" role="alert">
+                <h1>We couldn’t check your account.</h1>
+                <p>{loadError}</p>
+                <button type="button" className="id-btn" disabled={loading} onClick={load}>
+                  {loading ? 'Trying again…' : 'Try again'}
+                </button>
+              </section>
+            </div>
           </div>
         </main>
       </>
@@ -1690,6 +1834,12 @@ export default function App({ appId, token }) {
     && !unavailable
     && Boolean(profile)
   const needsHandle = canEdit && !profile?.handle
+  const activeDeployments = data.deployments
+    .filter(item => deploymentState(item).tone === 'success')
+    .length
+  const linkedSince = data.linked_at && Number.isFinite(Date.parse(data.linked_at))
+    ? new Date(data.linked_at).toLocaleDateString(undefined, { month: 'short', year: 'numeric' })
+    : null
 
   const saveHandle = async handle => {
     setActionError('')
@@ -1775,12 +1925,13 @@ export default function App({ appId, token }) {
     <>
       <style>{IDENTITY_STYLES}</style>
       <main className="id-root">
-        <div className="id-shell">
-          <Brand
-            appId={appId}
-            status={accountStatus(data)}
-            onUnlink={mode === 'linked' ? () => setDisconnecting(true) : undefined}
-          />
+        <Brand
+          appId={appId}
+          status={accountStatus(data)}
+          onUnlink={mode === 'linked' ? () => setDisconnecting(true) : undefined}
+        />
+        <div className="id-scroll">
+          <div className="id-shell">
 
           {loadError && (
             <section className="id-notice id-notice--error" role="alert">
@@ -1834,80 +1985,95 @@ export default function App({ appId, token }) {
                 items={data.deployments}
                 railway={railway}
                 selfHosted={mode === 'linked'}
-                onRefresh={load}
-                refreshing={loading}
               />
             </>
           ) : (
             <>
               <section className="id-hero">
-                <div className={`id-avatar${!canEdit ? ' is-disabled' : ''}`}>
-                  <ProfileAvatar profile={profile} token={token} />
-                  {canEdit && (
-                    <>
-                      <button
-                        type="button"
-                        className="id-avatar-edit"
-                        disabled={uploading}
-                        aria-label={uploading ? 'Uploading profile picture' : 'Change profile picture'}
-                        onClick={() => fileRef.current?.click()}
-                      >
-                        {uploading
-                          ? <ArrowRotateCw className="id-spin" width={16} />
-                          : <Camera width={16} />}
-                      </button>
-                      <input
-                        ref={fileRef}
-                        hidden
-                        type="file"
-                        accept="image/png,image/jpeg,image/webp"
-                        onChange={uploadAvatar}
-                      />
-                    </>
-                  )}
-                </div>
-                <div className="id-profile-copy">
-                  <div className="id-title-row">
-                    <h1 className="id-title">
-                      {profile?.handle
-                        ? `@${profile.handle}`
-                        : unavailable
-                          ? 'Account unavailable'
-                          : 'Choose your handle'}
-                    </h1>
-                    {canEdit && (
-                      <button
-                        type="button"
-                        className="id-handle-btn"
-                        aria-label="Change handle"
-                        onClick={() => setEditing(true)}
-                      >
-                        <Pencil width={18} />
-                      </button>
-                    )}
-                  </div>
-                  <div className="id-identity-caption">
-                    Your identity across Möbius
-                  </div>
-                  {profile?.email && (
-                    <div className="id-email">
-                      <Lock width={13} aria-hidden="true" />
-                      <span>{profile.email}</span>
-                      <span className="id-private-label">Private</span>
+                <IdentityCard
+                  footer={(
+                    <div className="id-cardfoot">
+                      {linkedSince && (
+                        <span className="id-cardkv">
+                          Linked since
+                          <b>{linkedSince}</b>
+                        </span>
+                      )}
+                      <span className="id-cardkv">
+                        Deployments
+                        <b>{`${data.deployments.length} ${activeDeployments === data.deployments.length ? 'active' : `· ${activeDeployments} active`}`}</b>
+                      </span>
+                      {mode === 'linked' && !unavailable && (
+                        <span className="id-cardlink">
+                          <span className="id-dot id-dot--online" aria-hidden="true" />
+                          mobius.you
+                        </span>
+                      )}
                     </div>
                   )}
-                </div>
+                >
+                  <div className="id-cardid">
+                    <div className={`id-avatar${!canEdit ? ' is-disabled' : ''}`}>
+                      <ProfileAvatar profile={profile} token={token} />
+                      {canEdit && (
+                        <>
+                          <button
+                            type="button"
+                            className="id-avatar-edit"
+                            disabled={uploading}
+                            aria-label={uploading ? 'Uploading profile picture' : 'Change profile picture'}
+                            onClick={() => fileRef.current?.click()}
+                          >
+                            {uploading
+                              ? <ArrowRotateCw className="id-spin" width={16} />
+                              : <Camera width={16} />}
+                          </button>
+                          <input
+                            ref={fileRef}
+                            hidden
+                            type="file"
+                            accept="image/png,image/jpeg,image/webp"
+                            onChange={uploadAvatar}
+                          />
+                        </>
+                      )}
+                    </div>
+                    <div className="id-profile-copy">
+                      <div className="id-title-row">
+                        <h1 className="id-title">
+                          {profile?.handle
+                            ? `@${profile.handle}`
+                            : unavailable
+                              ? 'Account unavailable'
+                              : 'Choose your handle'}
+                        </h1>
+                        {canEdit && (
+                          <button
+                            type="button"
+                            className="id-handle-btn"
+                            aria-label="Change handle"
+                            onClick={() => setEditing(true)}
+                          >
+                            <Pencil width={18} />
+                          </button>
+                        )}
+                      </div>
+                      {profile?.email && (
+                        <div className="id-email">
+                          <Lock width={13} aria-hidden="true" />
+                          <span>{profile.email}</span>
+                          <span className="id-private-label">Private</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </IdentityCard>
               </section>
 
               <Deployments
                 items={data.deployments}
                 railway={railway}
                 selfHosted={mode === 'linked'}
-                onRefresh={() => {
-                  void load()
-                  void loadRailway()
-                }}
-                refreshing={loading || railwayLoading}
                 onNew={() => setCreatingDeployment(true)}
                 onManage={setManagingDeployment}
                 onConnect={() => connectRailway()}
@@ -1922,6 +2088,7 @@ export default function App({ appId, token }) {
           )}
 
           {actionError && <div className="id-error" role="alert">{actionError}</div>}
+          </div>
         </div>
 
         {signingIn && (

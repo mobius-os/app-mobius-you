@@ -1,4 +1,5 @@
 import test from 'node:test'
+import { readFile } from 'node:fs/promises'
 import assert from 'node:assert/strict'
 
 import {
@@ -320,4 +321,50 @@ test('broker aborts and times out registration without leaking listeners', async
   const timedOut = brokerFixture({ registrationTimeoutMs: 5 })
   await assert.rejects(timedOut.waiting, /prepare secure sign-in/)
   assert.equal(timedOut.target.listeners, 0)
+})
+
+test('initial account load preserves the page shape instead of centering a spinner', async () => {
+  const source = await readFile(new URL('./index.jsx', import.meta.url), 'utf8')
+
+  assert.match(source, /function IdentityLoading\(\{ appId \}\)/)
+  assert.match(source, /<Brand[\s\S]*?Checking account…/)
+  assert.match(source, /id-loading-avatar/)
+  assert.match(source, /id-loading-deploy-name/)
+  assert.doesNotMatch(source, /className="id-loading"[\s\S]*?ArrowRotateCw/)
+})
+
+test('the loaded account body remains inside the scroll container', async () => {
+  const source = await readFile(new URL('./index.jsx', import.meta.url), 'utf8')
+
+  assert.match(
+    source,
+    /onUnlink=\{mode === 'linked'[\s\S]*?<div className="id-scroll">\s*<div className="id-shell">/,
+  )
+})
+
+test('parseIdentity accepts an optional linked_at instant', () => {
+  const base = {
+    account_mode: 'linked',
+    account_unavailable: false,
+    instance_id: null,
+    profile: {
+      user_id: 'usr_1',
+      email: 'owner@example.com',
+      display_name: 'Owner',
+      handle: 'owner',
+      avatar_url: null,
+    },
+    deployments: [{
+      id: 'local', name: 'This Möbius', status: 'Active',
+      url: 'https://example.com', current: true,
+    }],
+  }
+  assert.equal(parseIdentity({ ...base }).linked_at, undefined)
+  assert.equal(parseIdentity({ ...base, linked_at: null }).linked_at, null)
+  assert.equal(
+    parseIdentity({ ...base, linked_at: '2026-08-23T17:00:00Z' }).linked_at,
+    '2026-08-23T17:00:00Z',
+  )
+  assert.throws(() => parseIdentity({ ...base, linked_at: 'not-a-date' }))
+  assert.throws(() => parseIdentity({ ...base, linked_at: 12345 }))
 })
