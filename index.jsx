@@ -1925,12 +1925,13 @@ export default function App({ appId, token }) {
     <>
       <style>{IDENTITY_STYLES}</style>
       <main className="id-root">
-        <div className="id-shell">
-          <Brand
-            appId={appId}
-            status={accountStatus(data)}
-            onUnlink={mode === 'linked' ? () => setDisconnecting(true) : undefined}
-          />
+        <Brand
+          appId={appId}
+          status={accountStatus(data)}
+          onUnlink={mode === 'linked' ? () => setDisconnecting(true) : undefined}
+        />
+        <div className="id-scroll">
+          <div className="id-shell">
 
           {loadError && (
             <section className="id-notice id-notice--error" role="alert">
@@ -2087,6 +2088,7 @@ export default function App({ appId, token }) {
           )}
 
           {actionError && <div className="id-error" role="alert">{actionError}</div>}
+          </div>
         </div>
 
         {signingIn && (

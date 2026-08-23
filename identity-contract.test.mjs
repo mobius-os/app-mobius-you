@@ -333,6 +333,15 @@ test('initial account load preserves the page shape instead of centering a spinn
   assert.doesNotMatch(source, /className="id-loading"[\s\S]*?ArrowRotateCw/)
 })
 
+test('the loaded account body remains inside the scroll container', async () => {
+  const source = await readFile(new URL('./index.jsx', import.meta.url), 'utf8')
+
+  assert.match(
+    source,
+    /onUnlink=\{mode === 'linked'[\s\S]*?<div className="id-scroll">\s*<div className="id-shell">/,
+  )
+})
+
 test('parseIdentity accepts an optional linked_at instant', () => {
   const base = {
     account_mode: 'linked',
