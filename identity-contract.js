@@ -101,8 +101,15 @@ export function parseIdentity(value) {
     'profile',
     'deployments',
   ]
+  // linked_at is the platform's local record of when this Möbius was linked —
+  // optional so the app keeps working against a backend that predates it.
+  const validLinkedAt = value?.linked_at === undefined
+    || value?.linked_at === null
+    || (typeof value?.linked_at === 'string'
+      && Number.isFinite(Date.parse(value.linked_at)))
   if (
-    !exactKeys(value, fields)
+    !exactKeys(value, fields, ['linked_at'])
+    || !validLinkedAt
     || !ACCOUNT_MODES.includes(value.account_mode)
     || typeof value.account_unavailable !== 'boolean'
     || !Array.isArray(value.deployments)
