@@ -1,7 +1,7 @@
 {
   "id": "identity",
   "name": "Möbius · You",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "Your Möbius account, profile and active deployments.",
   "author": "mobius-os",
   "license": "MIT",

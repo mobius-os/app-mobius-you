@@ -35,7 +35,7 @@ Self-hosted linking uses the deployed mobius.you protocol (`account-link.openapi
 
 Railway control is a separate reviewed permission from identity management. A new account link explicitly grants Railway inventory/write access and a separate deployment-deletion scope; older identity-only links remain valid for profile reads but must reconnect before infrastructure controls appear.
 
-The app reads `GET /api/identity/railway`, creates deployments, updates CPU/RAM and grows storage, retries failed operations, and requires an in-app confirmation before deletion. Railway OAuth opens in a popup from a short-lived, account-bound URL; the app polls the authoritative inventory for completion, so Railway codes and credentials never enter the frame.
+The app reads `GET /api/identity/railway`, creates deployments, updates CPU/RAM and grows storage, retries failed operations, and requires an in-app confirmation before deletion. Railway OAuth opens in a popup from a short-lived, account-bound URL; the app polls the authoritative inventory for completion, so Railway codes and credentials never enter the frame. If Railway reports an ambiguous deletion failure, the app performs a read-only diagnosis and only offers local record removal after the server confirms the project is absent; retrying deletion remains explicit.
 
 ## Development
 

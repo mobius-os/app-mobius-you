@@ -4,7 +4,10 @@ import assert from 'node:assert/strict'
 
 import {
   accountStatus,
+  deploymentNeedsTracking,
+  deploymentPresentation,
   parseIdentity,
+  parseDeletionDiagnosis,
   parseLinkAttempt,
   parseRailway,
   waitForAccountLink,
@@ -253,6 +256,58 @@ test('accepts an optional plan_limits block and rejects a malformed one', () => 
     ...base,
     connection: { ...base.connection, surprise: true },
   }))
+})
+
+test('presents deletion failures as deletion recovery, never as a build retry', () => {
+  const failed = deploymentPresentation({
+    status: 'delete_failed',
+    current_step: 'Delete failed',
+    last_error: "Möbius couldn't check the build just now. It will keep trying.",
+  })
+  assert.equal(failed.label, 'Deletion needs attention')
+  assert.equal(failed.actionLabel, 'Review')
+  assert.match(failed.detail, /confirm whether Railway removed this project/)
+  assert.doesNotMatch(failed.detail, /build/i)
+
+  const reconnect = deploymentPresentation({
+    status: 'delete_failed',
+    current_step: 'Delete failed',
+    last_error: 'Reconnect the Railway account shown on this deployment, then retry deletion.',
+  })
+  assert.match(reconnect.detail, /Reconnect the Railway account/)
+  assert.equal(deploymentPresentation({ status: 'future_state' }).tone, 'muted')
+})
+
+test('accepts only bounded deletion recovery state', () => {
+  const diagnosis = {
+    state: 'missing_unconfirmed',
+    message: 'Railway says this project may already be gone.',
+    can_confirm_absent: true,
+  }
+  assert.equal(parseDeletionDiagnosis(diagnosis), diagnosis)
+  assert.throws(() => parseDeletionDiagnosis({ ...diagnosis, state: 'deleted' }))
+  assert.throws(() => parseDeletionDiagnosis({ ...diagnosis, state: 'present' }))
+  assert.throws(() => parseDeletionDiagnosis({ ...diagnosis, can_confirm_absent: false }))
+  assert.throws(() => parseDeletionDiagnosis({ ...diagnosis, message: 'x'.repeat(361) }))
+  assert.throws(() => parseDeletionDiagnosis({ ...diagnosis, extra: true }))
+})
+
+test('tracks only Railway states that can settle without another owner action', () => {
+  for (const status of ['queued', 'creating', 'deploying', 'deleting']) {
+    assert.equal(deploymentNeedsTracking({ status }), true)
+  }
+  for (const status of ['ready', 'active', 'error', 'delete_failed', 'deleted']) {
+    assert.equal(deploymentNeedsTracking({ status }), false)
+  }
+})
+
+test('wires deletion recovery through the reviewed server confirmation path', async () => {
+  const source = await readFile(new URL('./index.jsx', import.meta.url), 'utf8')
+
+  assert.match(source, /`\/railway\/deployments\/\$\{instance\.id\}\/deletion`/)
+  assert.match(source, /diagnosis\?\.can_confirm_absent && !confirmRecord/)
+  assert.match(source, /`\/deployments\/\$\{id\}\/confirm-absent`/)
+  assert.match(source, /JSON\.stringify\(\{ confirmed_absent: true \}\)/)
 })
 
 test('broker registers before navigation and accepts only the parent-forwarded result', async () => {
