@@ -20,6 +20,9 @@ import {
 import {
   IdentityRequestError,
   accountStatus,
+  deploymentNeedsTracking,
+  deploymentPresentation,
+  parseDeletionDiagnosis,
   parseIdentity,
   parseLinkAttempt,
   parseRailway,
@@ -54,6 +57,9 @@ async function identityRequest(token, path = '', options = {}) {
   }
   if (path === '/link/start') return parseLinkAttempt(body)
   if (path === '/railway') return parseRailway(body)
+  if (/^\/railway\/deployments\/[^/]+\/deletion$/.test(path)) {
+    return parseDeletionDiagnosis(body)
+  }
   if (['', '/profile', '/avatar', '/link/complete'].includes(path)) {
     return parseIdentity(body)
   }
@@ -691,25 +697,6 @@ function DisconnectModal({ token, onClose, onDisconnected, reconnecting = false 
   )
 }
 
-/* Presentation for a deployment's status pill. Derived from the fields the
-   bridge already returns (status, current_step, last_error); unknown statuses
-   fall back to a quiet neutral pill. */
-function deploymentState(instance) {
-  const status = String(instance?.status || '').toLowerCase()
-  const step = String(instance?.current_step || '').trim()
-  const error = String(instance?.last_error || '').trim()
-  if (status === 'ready' || status === 'active') {
-    return { label: 'Active', tone: 'success', detail: step && step.toLowerCase() !== 'ready' ? step : '' }
-  }
-  if (status === 'queued' || status === 'creating' || status === 'deploying') {
-    return { label: 'Deploying', tone: 'progress', detail: step }
-  }
-  if (status === 'error') {
-    return { label: 'Needs attention', tone: 'danger', detail: error || step }
-  }
-  return { label: instance?.status || 'Status unavailable', tone: 'muted', detail: error }
-}
-
 function Deployments({
   items,
   railway,
@@ -736,6 +723,7 @@ function Deployments({
   }
   const connected = railway?.railway_access === 'available'
     && railway.connection?.connected
+  const tracking = (railway?.instances || []).some(deploymentNeedsTracking)
 
   return (
     <article className="id-card">
@@ -743,6 +731,12 @@ function Deployments({
         <div>
           <h2>Your deployments</h2>
         </div>
+        {tracking && (
+          <div className="id-live-chip" role="status">
+            <ArrowRotateCw className="id-spin" width={13} aria-hidden="true" />
+            Updating live
+          </div>
+        )}
       </div>
       {railway?.railway_access === 'reconnect' && (
         <div className="id-railway-callout">
@@ -787,7 +781,7 @@ function Deployments({
       <div className="id-deployments">
         {deployments.map(item => {
           const managed = managedById.get(item.id)
-          const state = deploymentState(managed || item)
+          const state = deploymentPresentation(managed || item)
           const StateIcon = state.tone === 'success'
             ? CheckCircle
             : state.tone === 'danger'
@@ -796,7 +790,7 @@ function Deployments({
                 ? ArrowRotateCw
                 : null
           return (
-          <div className="id-deployment" key={item.id}>
+          <div className={`id-deployment id-deployment--${state.tone}`} key={item.id}>
             <div className="id-deploy-mark">
               <img src="/moebius.png" alt="" />
             </div>
@@ -833,10 +827,10 @@ function Deployments({
                 <button
                   type="button"
                   className={`id-deploy-manage${state.tone === 'danger' ? ' is-attention' : ''}`}
-                  aria-label={`Manage ${item.name}`}
+                  aria-label={`${state.actionLabel} ${item.name}`}
                   onClick={() => onManage(managed)}
                 >
-                  <span>Manage</span>
+                  <span>{state.actionLabel}</span>
                   <ChevronRight width={15} />
                 </button>
               )}
@@ -1304,7 +1298,142 @@ function RecoverySection({ token, instance }) {
   )
 }
 
-function ManageDeploymentModal({ instance, onClose, onCompute, onStorage, onRetry, onDelete, planLimits, token }) {
+function DeletionRecoverySection({
+  token, instance, pending, onConfirmAbsent,
+}) {
+  const [diagnosis, setDiagnosis] = useState(null)
+  const [checkError, setCheckError] = useState('')
+  const [unsupported, setUnsupported] = useState(false)
+  const [confirmRecord, setConfirmRecord] = useState(false)
+  const [revision, setRevision] = useState(0)
+
+  useEffect(() => {
+    const controller = new AbortController()
+    setDiagnosis(null)
+    setCheckError('')
+    setUnsupported(false)
+    ;(async () => {
+      try {
+        const result = await identityRequest(
+          token,
+          `/railway/deployments/${instance.id}/deletion`,
+          { signal: controller.signal },
+        )
+        if (!controller.signal.aborted) setDiagnosis(result)
+      } catch (requestError) {
+        if (controller.signal.aborted) return
+        // Older Möbius hosts do not have this read-only check yet. Preserve the
+        // existing retry path rather than turning a staged upgrade into an error.
+        if (requestError.status === 404) setUnsupported(true)
+        else setCheckError(requestError.message)
+      }
+    })()
+    return () => controller.abort()
+  }, [instance.id, revision, token])
+
+  const checking = !diagnosis && !checkError && !unsupported
+  const title = checking
+    ? 'Checking the Railway project'
+    : diagnosis?.state === 'present'
+      ? 'Railway still shows this project'
+      : ['missing', 'missing_unconfirmed'].includes(diagnosis?.state)
+        ? 'Deletion may already be complete'
+        : diagnosis?.state === 'authorization'
+          ? 'Reconnect Railway to continue'
+          : 'Railway could not confirm deletion'
+  const message = checking
+    ? 'This read-only check does not change your deployment.'
+    : diagnosis?.message
+      || checkError
+      || 'Try deleting again, or open Railway to check the project directly.'
+  const RecoveryIcon = checking ? ArrowRotateCw : diagnosis?.can_confirm_absent ? CheckCircle : Warning
+  const absenceNeedsOwnerCheck = diagnosis?.state === 'missing_unconfirmed'
+
+  return (
+    <section className="id-deletion-recovery" aria-labelledby="deletion-recovery-title">
+      <div className="id-deletion-recovery-head">
+        <RecoveryIcon
+          className={checking ? 'id-spin' : ''}
+          width={18}
+          aria-hidden="true"
+        />
+        <div>
+          <h3 id="deletion-recovery-title">{title}</h3>
+          <p>{message}</p>
+        </div>
+      </div>
+
+      <div className="id-deletion-recovery-actions">
+        {instance.railway_url && (
+          <button
+            type="button"
+            className="id-btn"
+            disabled={Boolean(pending)}
+            onClick={() => window.open(instance.railway_url, '_blank', 'noopener,noreferrer')}
+          >
+            Open Railway <ArrowUpRight width={16} />
+          </button>
+        )}
+        {checkError && (
+          <button
+            type="button"
+            className="id-btn"
+            disabled={Boolean(pending)}
+            onClick={() => setRevision(value => value + 1)}
+          >
+            Check again
+          </button>
+        )}
+        {diagnosis?.can_confirm_absent && !confirmRecord && (
+          <button
+            type="button"
+            className="id-btn id-btn--quiet"
+            disabled={Boolean(pending)}
+            onClick={() => setConfirmRecord(true)}
+          >
+            Remove from this list
+          </button>
+        )}
+      </div>
+
+      {confirmRecord && (
+        <div className="id-absence-confirm">
+          <strong>{absenceNeedsOwnerCheck
+            ? 'Did you check that the project is gone in Railway?'
+            : 'Remove this finished deployment from the list?'}</strong>
+          <span>{absenceNeedsOwnerCheck
+            ? 'This only removes the finished record from Möbius. It does not delete anything in Railway.'
+            : 'Möbius will check Railway once more, then remove only the local record.'}</span>
+          <div>
+            <button
+              type="button"
+              className="id-btn"
+              disabled={Boolean(pending)}
+              onClick={() => setConfirmRecord(false)}
+            >
+              Not yet
+            </button>
+            <button
+              type="button"
+              className="id-btn id-btn--danger"
+              disabled={Boolean(pending)}
+              onClick={onConfirmAbsent}
+            >
+              {pending === 'confirm-absent'
+                ? 'Removing…'
+                : absenceNeedsOwnerCheck ? 'I checked — remove it' : 'Remove finished deployment'}
+            </button>
+          </div>
+        </div>
+      )}
+    </section>
+  )
+}
+
+function ManageDeploymentModal({
+  instance, onClose, onCompute, onStorage, onRetry, onDelete, onConfirmAbsent,
+  planLimits, token,
+}) {
   // Selects use '' to mean "plan maximum"; if the deployment already sits at the
   // plan ceiling, start there rather than on a value the picker would not list.
   const [cpu, setCpu] = useState(() => {
@@ -1323,6 +1452,13 @@ function ManageDeploymentModal({ instance, onClose, onCompute, onStorage, onRetr
   const [confirmDelete, setConfirmDelete] = useState(false)
   const closeRef = useRef(null)
   const dialogRef = useDialog(onClose, Boolean(pending), closeRef)
+  const state = deploymentPresentation(instance)
+  const retryingDelete = String(instance.status).toLowerCase() === 'delete_failed'
+  const StatusIcon = state.tone === 'danger'
+    ? Warning
+    : state.tone === 'progress'
+      ? ArrowRotateCw
+      : CheckCircle
 
   const run = async (action, work) => {
     if (pending) return
@@ -1354,12 +1490,38 @@ function ManageDeploymentModal({ instance, onClose, onCompute, onStorage, onRetr
         <div className="id-manage-head">
           <div>
             <h2 id="manage-deployment-title">{instance.name}</h2>
-            <p>{instance.current_step || instance.status}</p>
+            <p>{state.label}</p>
           </div>
           <span className="id-plan">{instance.resources.plan}</span>
         </div>
 
         <DeploymentMetrics token={token} instance={instance} />
+
+        {String(instance.status).toLowerCase() !== 'ready' && !retryingDelete && (
+          <div className={`id-operation-status id-operation-status--${state.tone}`} role="status">
+            <StatusIcon
+              className={state.tone === 'progress' ? 'id-spin' : ''}
+              width={19}
+              aria-hidden="true"
+            />
+            <div>
+              <strong>{state.label}</strong>
+              {state.detail && <span>{state.detail}</span>}
+            </div>
+          </div>
+        )}
+
+        {retryingDelete && (
+          <DeletionRecoverySection
+            token={token}
+            instance={instance}
+            pending={pending}
+            onConfirmAbsent={() => run(
+              'confirm-absent',
+              () => onConfirmAbsent(instance.id),
+            )}
+          />
+        )}
 
         {instance.actions.edit_resources && (
           <div className="id-manage-resources">
@@ -1451,7 +1613,6 @@ function ManageDeploymentModal({ instance, onClose, onCompute, onStorage, onRetr
           </div>
         )}
 
-        {instance.last_error && <div className="id-manage-error">{instance.last_error}</div>}
         {error && <div className="id-signin-error" role="alert">{error}</div>}
 
         <div className="id-manage-links">
@@ -1460,12 +1621,12 @@ function ManageDeploymentModal({ instance, onClose, onCompute, onStorage, onRetr
               Open Möbius <ArrowUpRight width={16} />
             </button>
           )}
-          {instance.railway_url && (
+          {instance.railway_url && !retryingDelete && (
             <button type="button" className="id-btn" onClick={() => window.open(instance.railway_url, '_blank', 'noopener,noreferrer')}>
               Open Railway <ArrowUpRight width={16} />
             </button>
           )}
-          {instance.actions.retry && (
+          {instance.actions.retry && !retryingDelete && (
             <button type="button" className="id-btn" disabled={Boolean(pending)} onClick={() => run('retry', () => onRetry(instance.id))}>
               {pending === 'retry' ? 'Retrying…' : 'Retry deployment'}
             </button>
@@ -1477,20 +1638,34 @@ function ManageDeploymentModal({ instance, onClose, onCompute, onStorage, onRetr
         {instance.actions.delete && (
           confirmDelete ? (
             <div className="id-delete-confirm">
-              <strong>Delete this Möbius and its Railway project?</strong>
-              <span>This permanently removes the deployment and cannot be undone.</span>
+              <strong>{retryingDelete
+                ? 'Try removing this Railway project again?'
+                : 'Delete this Möbius and its Railway project?'}</strong>
+              <span>{retryingDelete
+                ? 'Möbius will ask Railway to permanently delete it again, then keep this page updated.'
+                : 'This permanently removes the deployment and cannot be undone.'}</span>
               <div>
                 <button type="button" className="id-btn" disabled={Boolean(pending)} onClick={() => setConfirmDelete(false)}>
                   Keep deployment
                 </button>
-                <button type="button" className="id-btn id-btn--danger" disabled={Boolean(pending)} onClick={() => run('delete', () => onDelete(instance.id))}>
-                  {pending === 'delete' ? 'Deleting…' : 'Delete permanently'}
+                <button
+                  type="button"
+                  className="id-btn id-btn--danger"
+                  disabled={Boolean(pending)}
+                  onClick={() => run(
+                    retryingDelete ? 'retry-delete' : 'delete',
+                    () => retryingDelete ? onRetry(instance.id) : onDelete(instance.id),
+                  )}
+                >
+                  {pending
+                    ? 'Deleting…'
+                    : retryingDelete ? 'Try deleting again' : 'Delete permanently'}
                 </button>
               </div>
             </div>
           ) : (
             <button type="button" className="id-btn id-btn--quiet id-delete-trigger" onClick={() => setConfirmDelete(true)}>
-              <Trash width={16} /> Delete deployment
+              <Trash width={16} /> {retryingDelete ? 'Try deleting again' : 'Delete deployment'}
             </button>
           )
         )}
@@ -1778,6 +1953,22 @@ export default function App({ appId, token }) {
     return () => { railwaySequenceRef.current += 1 }
   }, [data?.account_mode, loadRailway])
 
+  const trackingRailway = (railway?.instances || []).some(deploymentNeedsTracking)
+  useEffect(() => {
+    if (!trackingRailway) return undefined
+    let cancelled = false
+    let timer
+    const poll = async () => {
+      await loadRailway({ quiet: true })
+      if (!cancelled) timer = setTimeout(poll, 2500)
+    }
+    timer = setTimeout(poll, 1500)
+    return () => {
+      cancelled = true
+      clearTimeout(timer)
+    }
+  }, [trackingRailway, loadRailway])
+
   useEffect(() => () => {
     railwayConnectAbortRef.current?.abort()
   }, [])
@@ -1835,7 +2026,7 @@ export default function App({ appId, token }) {
     && Boolean(profile)
   const needsHandle = canEdit && !profile?.handle
   const activeDeployments = data.deployments
-    .filter(item => deploymentState(item).tone === 'success')
+    .filter(item => deploymentPresentation(item).tone === 'success')
     .length
   const linkedSince = data.linked_at && Number.isFinite(Date.parse(data.linked_at))
     ? new Date(data.linked_at).toLocaleDateString(undefined, { month: 'short', year: 'numeric' })
@@ -2158,6 +2349,11 @@ export default function App({ appId, token }) {
             })}
             onRetry={id => railwayAction(`/deployments/${id}/retry`, { method: 'POST' })}
             onDelete={id => railwayAction(`/deployments/${id}`, { method: 'DELETE' })}
+            onConfirmAbsent={id => railwayAction(`/deployments/${id}/confirm-absent`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ confirmed_absent: true }),
+            })}
           />
         )}
         {managingRailway && railway?.connection && (

@@ -5,6 +5,13 @@ export const RAILWAY_ACCESS = Object.freeze([
   'unavailable',
   'available',
 ])
+export const DELETION_STATES = Object.freeze([
+  'present',
+  'missing',
+  'missing_unconfirmed',
+  'authorization',
+  'unknown',
+])
 
 const ACCOUNT_LINK_WINDOW_MS = 10 * 60 * 1000
 const BROKER_ACK_WINDOW_MS = 5 * 1000
@@ -13,6 +20,17 @@ const ACCOUNT_LINK_ATTEMPT = /^[A-Za-z0-9_-]{16,512}$/
 const ACCOUNT_LINK_CODE = /^[A-Za-z0-9_-]{32,512}$/
 const HANDLE = /^[a-z0-9_]{3,30}$/
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+const TRACKED_DEPLOYMENT_STATUSES = new Set([
+  'queued',
+  'creating',
+  'deploying',
+  'deleting',
+])
+
+const DELETE_CONFIRMATION_FALLBACK = (
+  "Möbius couldn't confirm whether Railway removed this project. "
+  + 'Try deleting again, or open Railway to check.'
+)
 
 export class IdentityRequestError extends Error {
   constructor(message, status = 0) {
@@ -253,6 +271,81 @@ export function parseRailway(value) {
     }
   }
   return value
+}
+
+export function parseDeletionDiagnosis(value) {
+  const confirmable = value?.state === 'missing'
+    || value?.state === 'missing_unconfirmed'
+  if (
+    !exactKeys(value, ['state', 'message', 'can_confirm_absent'])
+    || !DELETION_STATES.includes(value.state)
+    || typeof value.message !== 'string'
+    || value.message.length < 1
+    || value.message.length > 360
+    || typeof value.can_confirm_absent !== 'boolean'
+    || value.can_confirm_absent !== confirmable
+  ) {
+    throw new Error('Möbius returned invalid deletion recovery state.')
+  }
+  return value
+}
+
+export function deploymentNeedsTracking(instance) {
+  return TRACKED_DEPLOYMENT_STATUSES.has(String(instance?.status || '').toLowerCase())
+}
+
+export function deploymentPresentation(instance) {
+  const status = String(instance?.status || '').toLowerCase()
+  const step = String(instance?.current_step || '').trim()
+  const error = String(instance?.last_error || '').trim()
+
+  if (status === 'ready' || status === 'active') {
+    return {
+      label: 'Active',
+      detail: step && step.toLowerCase() !== 'ready' ? step : '',
+      tone: 'success',
+      actionLabel: 'Manage',
+    }
+  }
+  if (status === 'deleting') {
+    return {
+      label: 'Deleting',
+      detail: 'Railway is removing this project. This page will update automatically.',
+      tone: 'progress',
+      actionLabel: 'View',
+    }
+  }
+  if (status === 'delete_failed') {
+    const staleBuildCopy = /check the build/i.test(error)
+    return {
+      label: 'Deletion needs attention',
+      detail: error && !staleBuildCopy ? error : DELETE_CONFIRMATION_FALLBACK,
+      tone: 'danger',
+      actionLabel: 'Review',
+    }
+  }
+  if (status === 'queued' || status === 'creating' || status === 'deploying') {
+    return {
+      label: 'Deploying',
+      detail: step || 'Möbius is following the Railway build.',
+      tone: 'progress',
+      actionLabel: 'View',
+    }
+  }
+  if (status === 'error') {
+    return {
+      label: 'Needs attention',
+      detail: error || step || 'This deployment needs your attention.',
+      tone: 'danger',
+      actionLabel: 'Review',
+    }
+  }
+  return {
+    label: step || instance?.status || 'Status unavailable',
+    detail: error,
+    tone: 'muted',
+    actionLabel: 'Manage',
+  }
 }
 
 export function parseLinkAttempt(value) {
