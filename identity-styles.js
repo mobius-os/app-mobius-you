@@ -80,16 +80,19 @@ button { user-select: none; -webkit-user-select: none; }
   flex: 0 0 auto;
   width: 100%;
   min-height: 52px;
-  background: transparent;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
 }
 
 .id-top-inner {
+  display: flex;
+  align-items: center;
   width: 100%;
   max-width: 712px;
   margin-inline: auto;
   justify-content: space-between;
   gap: 16px;
-  padding: max(14px, env(safe-area-inset-top)) 16px 6px;
+  padding: max(14px, env(safe-area-inset-top)) 16px 12px;
 }
 
 .id-brand {
@@ -1736,4 +1739,22 @@ button { user-select: none; -webkit-user-select: none; }
   .id-spin { animation: none; }
   .id-provider { transition: none; }
 }
+
+/* mobius-ui:CenteredRail v1 */
+@media (min-width: 900px) {
+  .id-root {
+    background: radial-gradient(ellipse 62% 88% at 50% 48%,
+      color-mix(in srgb, var(--accent) 9%, var(--surface)) 0%,
+      color-mix(in srgb, var(--accent) 3%, var(--surface)) 38%,
+      var(--surface) 100%);
+  }
+  .id-root::before {
+    content: ""; position: absolute; inset-block: 0; left: 50%;
+    width: min(100%, 712px); transform: translateX(-50%);
+    background: var(--bg); pointer-events: none;
+  }
+  .id-top { width: min(100%, 712px); margin-inline: auto; }
+
+}
+/* /mobius-ui:CenteredRail */
 `
