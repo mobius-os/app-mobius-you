@@ -1743,16 +1743,9 @@ button { user-select: none; -webkit-user-select: none; }
 /* mobius-ui:CenteredRail v1 */
 @media (min-width: 900px) {
   .id-root {
-    background:
-      linear-gradient(var(--bg), var(--bg)) center / min(100%, 712px) 100% no-repeat,
-      radial-gradient(ellipse 76% 112% at 50% 46%,
-        color-mix(in srgb, var(--accent) 18%, var(--bg)) 0%,
-        color-mix(in srgb, var(--accent) 7%, var(--bg)) 46%,
-        color-mix(in srgb, var(--text) 2%, var(--bg)) 100%);
 
   }
   .id-top { width: min(100%, 712px); margin-inline: auto; }
-
 }
 /* /mobius-ui:CenteredRail */
 `
