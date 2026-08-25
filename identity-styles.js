@@ -80,16 +80,19 @@ button { user-select: none; -webkit-user-select: none; }
   flex: 0 0 auto;
   width: 100%;
   min-height: 52px;
-  background: transparent;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
 }
 
 .id-top-inner {
+  display: flex;
+  align-items: center;
   width: 100%;
   max-width: 712px;
   margin-inline: auto;
   justify-content: space-between;
   gap: 16px;
-  padding: max(14px, env(safe-area-inset-top)) 16px 6px;
+  padding: max(14px, env(safe-area-inset-top)) 16px 12px;
 }
 
 .id-brand {
@@ -1856,4 +1859,13 @@ button { user-select: none; -webkit-user-select: none; }
   .id-spin { animation: none; }
   .id-provider { transition: none; }
 }
+
+/* mobius-ui:CenteredRail v1 */
+@media (min-width: 900px) {
+  .id-root {
+
+  }
+  .id-top { width: min(100%, 712px); margin-inline: auto; }
+}
+/* /mobius-ui:CenteredRail */
 `
