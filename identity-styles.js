@@ -81,7 +81,6 @@ button { user-select: none; -webkit-user-select: none; }
   width: 100%;
   min-height: 52px;
   background: var(--bg);
-  border-bottom: 1px solid var(--border);
 }
 
 .id-top-inner {
@@ -93,6 +92,7 @@ button { user-select: none; -webkit-user-select: none; }
   justify-content: space-between;
   gap: 16px;
   padding: max(14px, env(safe-area-inset-top)) 16px 12px;
+  border-bottom: 1px solid var(--border);
 }
 
 .id-brand {
@@ -680,8 +680,8 @@ button { user-select: none; -webkit-user-select: none; }
 .id-add-row:active { background: color-mix(in srgb, var(--text, #f5f5f5) 6%, transparent); }
 
 .id-add-plus {
-  width: 42px;
-  height: 42px;
+  width: 38px;
+  height: 38px;
   flex: none;
   display: grid;
   place-items: center;
@@ -700,7 +700,8 @@ button { user-select: none; -webkit-user-select: none; }
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 10px 16px;
+  min-height: 44px;
+  padding: 0 12px 0 16px;
   border-top: 1px solid var(--border-light, var(--border, #2a2a2a));
   background: color-mix(in srgb, var(--surface2, #1e1e1e) 55%, var(--surface, #171717));
   color: var(--muted, #999);
@@ -1286,6 +1287,7 @@ button { user-select: none; -webkit-user-select: none; }
   margin-left: auto;
   display: inline-flex;
   align-items: center;
+  min-height: 44px;
   gap: 2px;
   padding: 0 4px 0 10px;
   border: 0;
@@ -1748,13 +1750,6 @@ button { user-select: none; -webkit-user-select: none; }
 }
 
 @media (max-width: 720px) {
-  .id-root { padding: 16px; }
-
-  .id-top {
-    align-items: flex-start;
-    margin-bottom: 22px;
-  }
-
   /* Drop the redundant subtitle on mobile and let the connection pill size to
      its label (the short brand yields the space) so it shows "Linked to
      mobius.you" in full instead of ellipsizing to "Linked…". */
@@ -1791,11 +1786,23 @@ button { user-select: none; -webkit-user-select: none; }
 
   .id-provider-list { grid-template-columns: 1fr; }
 
-  .id-card { padding: 18px; }
-
   .id-card-head { align-items: center; }
 
-  .id-dep-foot { flex-wrap: wrap; }
+  .id-dep-foot {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    gap: 8px;
+    align-items: center;
+  }
+  .id-railway-conn-account {
+    min-width: 0;
+    overflow: visible;
+    text-overflow: clip;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  .id-railway-plan { justify-self: start; }
+  .id-railway-manage { margin-left: 0; }
 
   .id-loading-avatar { width: 72px; }
   .id-loading-title { height: 24px; }
@@ -1829,7 +1836,7 @@ button { user-select: none; -webkit-user-select: none; }
   .id-modal-actions .id-btn { width: 100%; }
 }
 
-@media (max-width: 520px) {
+@media (max-width: 360px) {
   .id-deployment {
     grid-template-columns: auto minmax(0, 1fr);
     align-items: start;
@@ -1849,7 +1856,26 @@ button { user-select: none; -webkit-user-select: none; }
   .id-avatar { width: 64px; font-size: 24px; }
   .id-avatar-edit { width: 26px; height: 26px; }
   .id-title { font-size: 20px; }
-  .id-email { font-size: 11.5px; }
+  .id-email {
+    width: 100%;
+    display: grid;
+    grid-template-columns: 13px minmax(0, 1fr);
+    align-items: center;
+    gap: 4px 7px;
+    font-size: 11.5px;
+  }
+  .id-email > span:first-of-type {
+    overflow: visible;
+    text-overflow: clip;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  .id-private-label {
+    grid-column: 2;
+    margin-left: 0;
+    padding-left: 0;
+    border-left: 0;
+  }
   .id-cardfoot { gap: 10px 14px; }
   .id-loading-avatar { width: 64px; }
   .id-loading-title { height: 22px; }
