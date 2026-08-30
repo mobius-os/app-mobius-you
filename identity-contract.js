@@ -26,6 +26,8 @@ const TRACKED_DEPLOYMENT_STATUSES = new Set([
   'deploying',
   'deleting',
 ])
+const TRACKED_UPDATE_STATES = new Set(['pending', 'checking', 'retry'])
+export const IMAGE_UPDATE_POLICIES = Object.freeze(['automatic', 'manual'])
 
 const DELETE_CONFIRMATION_FALLBACK = (
   "Möbius couldn't confirm whether Railway removed this project. "
@@ -174,7 +176,7 @@ function validRailwayInstance(instance) {
   if (!exactKeys(instance, [
     'id', 'name', 'status', 'url', 'railway_url', 'current_step',
     'last_error', 'resources', 'actions',
-  ])) return false
+  ], ['updates'])) return false
   if (
     typeof instance.id !== 'string'
     || !/^mob_[A-Za-z0-9_-]{3,80}$/.test(instance.id)
@@ -203,8 +205,16 @@ function validRailwayInstance(instance) {
     || resources.plan.length > 32
   ) return false
   const actions = instance.actions
-  return exactKeys(actions, ['edit_resources', 'retry', 'delete'])
-    && Object.values(actions).every(value => typeof value === 'boolean')
+  if (
+    !exactKeys(actions, ['edit_resources', 'retry', 'delete'], ['edit_updates'])
+    || !Object.values(actions).every(value => typeof value === 'boolean')
+  ) return false
+  if (instance.updates === undefined) return true
+  return exactKeys(instance.updates, ['policy', 'state', 'error'])
+    && IMAGE_UPDATE_POLICIES.includes(instance.updates.policy)
+    && typeof instance.updates.state === 'string'
+    && instance.updates.state.length <= 40
+    && nullableString(instance.updates.error, 360)
 }
 
 function positiveIntList(value, max = 64) {
@@ -233,6 +243,13 @@ function validPlanLimits(value) {
     && Number.isInteger(value.default_volume_mb) && value.default_volume_mb > 0
 }
 
+function validImageUpdatePolicies(value) {
+  return Array.isArray(value)
+    && value.length === IMAGE_UPDATE_POLICIES.length
+    && new Set(value).size === value.length
+    && value.every(policy => IMAGE_UPDATE_POLICIES.includes(policy))
+}
+
 export function parseRailway(value) {
   if (
     !exactKeys(value, ['railway_access', 'connection', 'instances'])
@@ -253,7 +270,7 @@ export function parseRailway(value) {
     if (
       !exactKeys(connection, [
         'connected', 'account', 'workspace', 'plan', 'deploy_blocked',
-      ], ['plan_limits'])
+      ], ['plan_limits', 'update_policies'])
       || typeof connection.connected !== 'boolean'
       || typeof connection.account !== 'string'
       || connection.account.length > 320
@@ -269,6 +286,12 @@ export function parseRailway(value) {
     if (connection.plan_limits !== undefined && !validPlanLimits(connection.plan_limits)) {
       delete connection.plan_limits
     }
+    // Like plan limits, this is an advertised capability. A malformed extension
+    // hides only the new controls; it never blanks the deployments panel.
+    if (
+      connection.update_policies !== undefined
+      && !validImageUpdatePolicies(connection.update_policies)
+    ) delete connection.update_policies
   }
   return value
 }
@@ -292,6 +315,7 @@ export function parseDeletionDiagnosis(value) {
 
 export function deploymentNeedsTracking(instance) {
   return TRACKED_DEPLOYMENT_STATUSES.has(String(instance?.status || '').toLowerCase())
+    || TRACKED_UPDATE_STATES.has(String(instance?.updates?.state || '').toLowerCase())
 }
 
 export function deploymentPresentation(instance) {
