@@ -258,6 +258,50 @@ test('accepts an optional plan_limits block and rejects a malformed one', () => 
   }))
 })
 
+test('accepts advertised image-update controls without requiring them from older hosts', () => {
+  const base = {
+    railway_access: 'available',
+    connection: {
+      connected: true,
+      account: 'owner@example.com',
+      workspace: 'Personal',
+      plan: 'hobby',
+      deploy_blocked: '',
+      update_policies: ['automatic', 'manual'],
+    },
+    instances: [{
+      id: 'mob_example',
+      name: 'Writing room',
+      status: 'ready',
+      url: 'https://writing.example',
+      railway_url: 'https://railway.com/project/project',
+      current_step: 'Ready',
+      last_error: null,
+      resources: {
+        cpu: null, memory_mb: null, volume_size_mb: 5000, plan: 'hobby',
+      },
+      updates: { policy: 'manual', state: 'current', error: null },
+      actions: {
+        edit_resources: true, edit_updates: true, retry: false, delete: true,
+      },
+    }],
+  }
+  assert.equal(parseRailway(base), base)
+
+  const drifted = parseRailway({
+    ...base,
+    connection: { ...base.connection, update_policies: ['sometimes'] },
+  })
+  assert.equal(drifted.connection.update_policies, undefined)
+  assert.throws(() => parseRailway({
+    ...base,
+    instances: [{
+      ...base.instances[0],
+      updates: { policy: 'sometimes', state: 'current', error: null },
+    }],
+  }))
+})
+
 test('presents deletion failures as deletion recovery, never as a build retry', () => {
   const failed = deploymentPresentation({
     status: 'delete_failed',
@@ -299,6 +343,23 @@ test('tracks only Railway states that can settle without another owner action', 
   for (const status of ['ready', 'active', 'error', 'delete_failed', 'deleted']) {
     assert.equal(deploymentNeedsTracking({ status }), false)
   }
+  for (const updateState of ['pending', 'checking', 'retry']) {
+    assert.equal(deploymentNeedsTracking({
+      status: 'ready', updates: { state: updateState },
+    }), true)
+  }
+  assert.equal(deploymentNeedsTracking({
+    status: 'ready', updates: { state: 'current' },
+  }), false)
+})
+
+test('wires automatic and manual image-update choices through the server bridge', async () => {
+  const source = await readFile(new URL('./index.jsx', import.meta.url), 'utf8')
+
+  assert.match(source, /settings\.update_policy = updatePolicy/)
+  assert.match(source, /`\/deployments\/\$\{id\}\/updates`/)
+  assert.match(source, /update_policy: updatePolicy/)
+  assert.match(source, /Automatic updates/)
 })
 
 test('wires deletion recovery through the reviewed server confirmation path', async () => {

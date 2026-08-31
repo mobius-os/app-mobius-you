@@ -1256,6 +1256,24 @@ button { user-select: none; -webkit-user-select: none; }
   border-bottom: 1px solid var(--border-light, var(--border, #2a2a2a));
 }
 
+.id-manage-updates {
+  display: flex;
+  flex-direction: column;
+  gap: 13px;
+  padding: 17px 0;
+  border-top: 1px solid var(--border-light, var(--border, #2a2a2a));
+  border-bottom: 1px solid var(--border-light, var(--border, #2a2a2a));
+}
+
+.id-manage-resources + .id-manage-updates { border-top: 0; }
+.id-manage-updates > .id-btn { align-self: flex-start; }
+
+.id-update-state {
+  color: var(--muted, #999);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
 .id-storage-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;

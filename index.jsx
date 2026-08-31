@@ -959,9 +959,12 @@ function WandIcon(props) {
 // Mirrors the mobius.you deploy composer: name + a live "included / storage"
 // launch summary, resource limits tucked behind Advanced settings, and a
 // Deploy Möbius action. Kept as a modal and on the Möbius shell theme.
-function NewDeploymentModal({ onClose, onCreate, planLimits, plan }) {
+function NewDeploymentModal({
+  onClose, onCreate, planLimits, plan, updatePolicies,
+}) {
   const [name, setName] = useState('My Möbius')
   const [managedAuth, setManagedAuth] = useState(true)
+  const [updatePolicy, setUpdatePolicy] = useState('automatic')
   const [cpu, setCpu] = useState('')
   const [memory, setMemory] = useState('')
   const [volume, setVolume] = useState(planLimits ? String(planLimits.default_volume_mb) : '')
@@ -969,6 +972,9 @@ function NewDeploymentModal({ onClose, onCreate, planLimits, plan }) {
   const [error, setError] = useState('')
   const inputRef = useRef(null)
   const dialogRef = useDialog(onClose, pending, inputRef)
+  const supportsUpdatePolicy = Array.isArray(updatePolicies)
+    && updatePolicies.includes('automatic')
+    && updatePolicies.includes('manual')
 
   const submit = async event => {
     event.preventDefault()
@@ -976,13 +982,15 @@ function NewDeploymentModal({ onClose, onCreate, planLimits, plan }) {
     setPending(true)
     setError('')
     try {
-      await onCreate({
+      const settings = {
         name: name.trim(),
         managed_auth: managedAuth,
         cpu: cpu ? Number(cpu) : null,
         memory_mb: memory ? Number(memory) : null,
         volume_mb: volume ? Number(volume) : null,
-      })
+      }
+      if (supportsUpdatePolicy) settings.update_policy = updatePolicy
+      await onCreate(settings)
       onClose()
     } catch (requestError) {
       setError(requestError.message)
@@ -1052,12 +1060,14 @@ function NewDeploymentModal({ onClose, onCreate, planLimits, plan }) {
           <p className="id-launch-summary">{summaryRow}</p>
         )}
 
-        {planLimits ? (
+        {planLimits || supportsUpdatePolicy ? (
           <details className="id-disclosure">
             <summary>
               <span className="id-disclosure-title">Advanced settings</span>
               <span className="id-disclosure-state">
-                {managedAuth ? 'Möbius sign-in on' : 'Local sign-in'}{storageLabel ? ` · ${storageLabel}` : ''}
+                {managedAuth ? 'Möbius sign-in on' : 'Local sign-in'}
+                {supportsUpdatePolicy ? ` · ${updatePolicy === 'automatic' ? 'Auto updates on' : 'Manual updates'}` : ''}
+                {storageLabel ? ` · ${storageLabel}` : ''}
               </span>
               <span className="id-disclosure-caret" aria-hidden="true">
                 <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="m9 6 6 6-6 6" /></svg>
@@ -1078,17 +1088,42 @@ function NewDeploymentModal({ onClose, onCreate, planLimits, plan }) {
                   <span>Secure your Möbius with your mobius.you account. Disable this to set up a custom username and password on first boot.</span>
                 </span>
               </label>
-              <p className="id-eyebrow">Resource limits</p>
-              <ResourceFields
-                limits={planLimits}
-                cpu={cpu}
-                memory={memory}
-                volume={volume}
-                onCpu={setCpu}
-                onMemory={setMemory}
-                onVolume={setVolume}
-                disabled={pending}
-              />
+              {supportsUpdatePolicy && (
+                <>
+                  <p className="id-eyebrow">Updates</p>
+                  <label className="id-switch">
+                    <input
+                      type="checkbox"
+                      className="id-switch-input"
+                      checked={updatePolicy === 'automatic'}
+                      disabled={pending}
+                      onChange={event => setUpdatePolicy(
+                        event.target.checked ? 'automatic' : 'manual',
+                      )}
+                    />
+                    <span className="id-switch-track" aria-hidden="true" />
+                    <span className="id-switch-copy">
+                      <strong>Automatic updates</strong>
+                      <span>Let Railway install new verified Möbius releases. Turn this off to keep the deployed version until you choose to update it.</span>
+                    </span>
+                  </label>
+                </>
+              )}
+              {planLimits && (
+                <>
+                  <p className="id-eyebrow">Resource limits</p>
+                  <ResourceFields
+                    limits={planLimits}
+                    cpu={cpu}
+                    memory={memory}
+                    volume={volume}
+                    onCpu={setCpu}
+                    onMemory={setMemory}
+                    onVolume={setVolume}
+                    disabled={pending}
+                  />
+                </>
+              )}
               <p className="id-cost-note">
                 <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M12 11v5" /><path d="M12 7.5h.01" /></svg>
                 <span><strong>Möbius doesn't charge you.</strong> We use Railway to make launching your Möbius agents as seamless as possible; Railway bills your own account for actual usage.</span>
@@ -1431,8 +1466,8 @@ function DeletionRecoverySection({
 }
 
 function ManageDeploymentModal({
-  instance, onClose, onCompute, onStorage, onRetry, onDelete, onConfirmAbsent,
-  planLimits, token,
+  instance, onClose, onCompute, onStorage, onUpdates, onRetry, onDelete,
+  onConfirmAbsent, planLimits, token,
 }) {
   // Selects use '' to mean "plan maximum"; if the deployment already sits at the
   // plan ceiling, start there rather than on a value the picker would not list.
@@ -1447,6 +1482,9 @@ function ManageDeploymentModal({
   const [volume, setVolume] = useState(
     instance.resources.volume_size_mb ? String(instance.resources.volume_size_mb) : '',
   )
+  const [updatePolicy, setUpdatePolicy] = useState(
+    instance.updates?.policy || 'automatic',
+  )
   const [pending, setPending] = useState('')
   const [error, setError] = useState('')
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -1454,6 +1492,8 @@ function ManageDeploymentModal({
   const dialogRef = useDialog(onClose, Boolean(pending), closeRef)
   const state = deploymentPresentation(instance)
   const retryingDelete = String(instance.status).toLowerCase() === 'delete_failed'
+  const updateState = String(instance.updates?.state || '').toLowerCase()
+  const updatesApplying = ['pending', 'checking', 'retry'].includes(updateState)
   const StatusIcon = state.tone === 'danger'
     ? Warning
     : state.tone === 'progress'
@@ -1610,6 +1650,44 @@ function ManageDeploymentModal({
                 </button>
               </div>
             ) : null}
+          </div>
+        )}
+
+        {instance.actions.edit_updates && instance.updates && (
+          <div className="id-manage-updates">
+            <label className="id-switch">
+              <input
+                type="checkbox"
+                className="id-switch-input"
+                checked={updatePolicy === 'automatic'}
+                disabled={Boolean(pending)}
+                onChange={event => setUpdatePolicy(
+                  event.target.checked ? 'automatic' : 'manual',
+                )}
+              />
+              <span className="id-switch-track" aria-hidden="true" />
+              <span className="id-switch-copy">
+                <strong>Automatic updates</strong>
+                <span>Railway installs new verified Möbius releases. Turn this off to keep the current version until you choose to update it.</span>
+              </span>
+            </label>
+            {updatesApplying && (
+              <small className="id-update-state" role="status">
+                {updateState === 'retry'
+                  ? (instance.updates.error || 'Railway could not apply this yet. Möbius will retry.')
+                  : 'Railway is applying this update setting.'}
+              </small>
+            )}
+            <button
+              type="button"
+              className="id-btn"
+              disabled={Boolean(pending) || updatePolicy === instance.updates.policy}
+              onClick={() => run('updates', () => onUpdates(instance.id, {
+                update_policy: updatePolicy,
+              }))}
+            >
+              {pending === 'updates' ? 'Saving…' : 'Save update setting'}
+            </button>
           </div>
         )}
 
@@ -2323,6 +2401,7 @@ export default function App({ appId, token }) {
           <NewDeploymentModal
             planLimits={railway?.connection?.plan_limits}
             plan={railway?.connection?.plan}
+            updatePolicies={railway?.connection?.update_policies}
             onClose={() => setCreatingDeployment(false)}
             onCreate={payload => railwayAction('/deployments', {
               method: 'POST',
@@ -2343,6 +2422,11 @@ export default function App({ appId, token }) {
               body: JSON.stringify(payload),
             })}
             onStorage={(id, payload) => railwayAction(`/deployments/${id}/storage`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload),
+            })}
+            onUpdates={(id, payload) => railwayAction(`/deployments/${id}/updates`, {
               method: 'PATCH',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(payload),
