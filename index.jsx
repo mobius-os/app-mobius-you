@@ -1097,40 +1097,36 @@ function NewDeploymentModal({
           <p className="id-launch-summary">{summaryRow}</p>
         )}
 
-        {supportsUpdatePolicy && (
-          <section className="id-release-setting" aria-labelledby="new-release-setting-title">
-            <div className="id-release-setting-copy">
-              <strong id="new-release-setting-title">New Möbius releases</strong>
-              <span>Choose whether this deployment stays on its current version or installs verified releases automatically.</span>
-            </div>
-            <label className="id-field-block">
-              <span className="id-label">Release updates</span>
-              <select
-                className="id-select"
-                value={updatePolicy}
-                disabled={pending}
-                onChange={event => setUpdatePolicy(event.target.value)}
-              >
-                <option value="manual">Manual (default)</option>
-                <option value="automatic">Automatic</option>
-              </select>
-            </label>
-          </section>
-        )}
-
         {planLimits || supportsUpdatePolicy ? (
           <details className="id-disclosure">
             <summary>
               <span className="id-disclosure-title">Advanced settings</span>
               <span className="id-disclosure-state">
-                {managedAuth ? 'Möbius sign-in on' : 'Local sign-in'}
-                {storageLabel ? ` · ${storageLabel}` : ''}
+                {storageLabel || 'Default resources'}
+                {` · ${managedAuth ? 'Möbius sign-in on' : 'Local sign-in'}`}
+                {supportsUpdatePolicy ? ` · Automatic updates ${updatePolicy === 'automatic' ? 'on' : 'off'}` : ''}
               </span>
               <span className="id-disclosure-caret" aria-hidden="true">
                 <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="m9 6 6 6-6 6" /></svg>
               </span>
             </summary>
             <div className="id-disclosure-body">
+              {planLimits && (
+                <>
+                  <p className="id-eyebrow">Resources</p>
+                  <ResourceFields
+                    limits={planLimits}
+                    cpu={cpu}
+                    memory={memory}
+                    volume={volume}
+                    onCpu={setCpu}
+                    onMemory={setMemory}
+                    onVolume={setVolume}
+                    disabled={pending}
+                  />
+                </>
+              )}
+              <p className="id-eyebrow">Access</p>
               <label className="id-switch">
                 <input
                   type="checkbox"
@@ -1145,19 +1141,25 @@ function NewDeploymentModal({
                   <span>Secure your Möbius with your mobius.you account. Disable this to set up a custom username and password on first boot.</span>
                 </span>
               </label>
-              {planLimits && (
+              {supportsUpdatePolicy && (
                 <>
-                  <p className="id-eyebrow">Resource limits</p>
-                  <ResourceFields
-                    limits={planLimits}
-                    cpu={cpu}
-                    memory={memory}
-                    volume={volume}
-                    onCpu={setCpu}
-                    onMemory={setMemory}
-                    onVolume={setVolume}
-                    disabled={pending}
-                  />
+                  <p className="id-eyebrow">Releases</p>
+                  <label className="id-switch">
+                    <input
+                      type="checkbox"
+                      className="id-switch-input"
+                      checked={updatePolicy === 'automatic'}
+                      disabled={pending}
+                      onChange={event => setUpdatePolicy(
+                        event.target.checked ? 'automatic' : 'manual',
+                      )}
+                    />
+                    <span className="id-switch-track" aria-hidden="true" />
+                    <span className="id-switch-copy">
+                      <strong>Automatic release updates</strong>
+                      <span>Install verified Möbius releases automatically. Leave this off to choose when to update.</span>
+                    </span>
+                  </label>
                 </>
               )}
               <p className="id-cost-note">
