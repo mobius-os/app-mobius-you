@@ -302,6 +302,44 @@ test('accepts advertised image-update controls without requiring them from older
   }))
 })
 
+test('accepts the optional current-deployment adoption capability and safe actions', () => {
+  const railway = {
+    railway_access: 'available',
+    connection: {
+      connected: true,
+      account: 'owner@example.com',
+      workspace: 'Personal',
+      plan: 'hobby',
+      deploy_blocked: '',
+      adopt_current: true,
+    },
+    instances: [{
+      id: 'mob_current',
+      name: 'Current Möbius',
+      status: 'ready',
+      url: 'https://current.example',
+      railway_url: 'https://railway.com/project/project',
+      current_step: 'Ready',
+      last_error: null,
+      resources: { cpu: null, memory_mb: null, volume_size_mb: 5000, plan: 'hobby' },
+      updates: { policy: 'automatic', state: 'current', error: null },
+      actions: {
+        edit_resources: false,
+        edit_updates: true,
+        recover: false,
+        retry: false,
+        delete: false,
+      },
+    }],
+  }
+  assert.equal(parseRailway(railway), railway)
+  const drifted = parseRailway({
+    ...railway,
+    connection: { ...railway.connection, adopt_current: 'yes' },
+  })
+  assert.equal(drifted.connection.adopt_current, undefined)
+})
+
 test('presents deletion failures as deletion recovery, never as a build retry', () => {
   const failed = deploymentPresentation({
     status: 'delete_failed',
@@ -356,10 +394,22 @@ test('tracks only Railway states that can settle without another owner action', 
 test('wires automatic and manual image-update choices through the server bridge', async () => {
   const source = await readFile(new URL('./index.jsx', import.meta.url), 'utf8')
 
+  assert.match(source, /const \[updatePolicy, setUpdatePolicy\] = useState\('manual'\)/)
   assert.match(source, /settings\.update_policy = updatePolicy/)
   assert.match(source, /`\/deployments\/\$\{id\}\/updates`/)
   assert.match(source, /update_policy: updatePolicy/)
-  assert.match(source, /Automatic updates/)
+  assert.match(source, /className="id-release-setting"/)
+  assert.match(source, /Save release setting/)
+  assert.match(source, /planLimits \|\| supportsUpdatePolicy/)
+})
+
+test('wires exact-origin current deployment adoption without exposing launcher actions', async () => {
+  const source = await readFile(new URL('./index.jsx', import.meta.url), 'utf8')
+
+  assert.match(source, /\/railway\/deployments\/adopt-current/)
+  assert.match(source, /Your current release setting will not change/)
+  assert.match(source, /managedByOrigin\.get\(deploymentOrigin\(item\.url\)\)/)
+  assert.match(source, /instance\.actions\.recover !== false/)
 })
 
 test('wires deletion recovery through the reviewed server confirmation path', async () => {

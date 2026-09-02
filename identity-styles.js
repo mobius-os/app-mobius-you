@@ -1469,6 +1469,29 @@ button { user-select: none; -webkit-user-select: none; }
   background: var(--border, #555);
 }
 
+.id-release-setting {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(150px, .55fr);
+  align-items: end;
+  gap: 16px;
+  margin-top: 16px;
+  padding: 15px;
+  border: 1px solid var(--border, #333);
+  border-radius: var(--id-control-radius, 12px);
+  background: var(--surface2, #1e1e1e);
+}
+
+.id-release-setting-copy strong,
+.id-release-setting-copy span { display: block; }
+.id-release-setting-copy strong { color: var(--text, #f5f5f5); font-size: 13px; }
+.id-release-setting-copy span {
+  max-width: 56ch;
+  margin-top: 4px;
+  color: var(--muted, #999);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 .id-disclosure {
   margin-top: 16px;
   border: 1px solid var(--border, #333);
@@ -1833,6 +1856,7 @@ button { user-select: none; -webkit-user-select: none; }
   .id-railway-callout .id-btn { width: 100%; }
 
   .id-resource-fields { grid-template-columns: 1fr; }
+  .id-release-setting { grid-template-columns: minmax(0, 1fr); align-items: stretch; gap: 12px; }
   .id-meters { grid-template-columns: 1fr; }
   .id-storage-row { grid-template-columns: 1fr; align-items: stretch; }
   .id-storage-row .id-btn { width: 100%; }
