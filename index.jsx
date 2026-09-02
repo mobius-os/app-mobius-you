@@ -994,7 +994,7 @@ function WandIcon(props) {
 }
 
 // Mirrors the mobius.you deploy composer: name + a live "included / storage"
-// launch summary, a first-class release choice, resource limits tucked behind
+// launch summary, resources, access, and release controls tucked behind
 // Advanced settings, and a Deploy Möbius action.
 function NewDeploymentModal({
   onClose, onCreate, planLimits, plan, updatePolicies,
