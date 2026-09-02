@@ -703,15 +703,33 @@ function Deployments({
   selfHosted,
   onNew,
   onManage,
+  onAdoptCurrent,
   onConnect,
   onReconnect,
   onManageConnection,
   connecting,
+  adoptingCurrent,
 }) {
   const managedById = new Map((railway?.instances || []).map(item => [item.id, item]))
+  const deploymentOrigin = value => {
+    try {
+      const parsed = new URL(value)
+      return parsed.protocol === 'https:' ? parsed.origin : ''
+    } catch {
+      return ''
+    }
+  }
+  const managedByOrigin = new Map(
+    (railway?.instances || [])
+      .map(item => [deploymentOrigin(item.url), item])
+      .filter(([origin]) => Boolean(origin)),
+  )
   const deployments = [...items]
   for (const instance of railway?.instances || []) {
-    if (!deployments.some(item => item.id === instance.id)) {
+    if (!deployments.some(item => (
+      item.id === instance.id
+      || deploymentOrigin(item.url) === deploymentOrigin(instance.url)
+    ))) {
       deployments.push({
         id: instance.id,
         name: instance.name,
@@ -778,9 +796,28 @@ function Deployments({
           </div>
         </div>
       )}
+      {connected && railway.connection?.adopt_current && (
+        <div className="id-railway-callout">
+          <div>
+            <strong>Add release controls to this Möbius</strong>
+            <span>Möbius will verify this exact address in the selected Railway workspace. Your current release setting will not change.</span>
+          </div>
+          <button
+            type="button"
+            className="id-btn id-btn--primary"
+            onClick={onAdoptCurrent}
+            disabled={adoptingCurrent}
+          >
+            {adoptingCurrent
+              ? <><ArrowRotateCw className="id-spin" width={16} /> Verifying…</>
+              : 'Verify & connect'}
+          </button>
+        </div>
+      )}
       <div className="id-deployments">
         {deployments.map(item => {
           const managed = managedById.get(item.id)
+            || managedByOrigin.get(deploymentOrigin(item.url))
           const state = deploymentPresentation(managed || item)
           const StateIcon = state.tone === 'success'
             ? CheckCircle
@@ -799,11 +836,11 @@ function Deployments({
                 <div className="id-deploy-name">{item.name}</div>
                 {item.current && <span className="id-current-chip">You're here</span>}
               </div>
-              {(item.region || (item.current && selfHosted)) && (
+              {(item.region || (item.current && selfHosted && !managed)) && (
                 <div className="id-deploy-meta">
                   {item.region || ''}
-                  {item.region && item.current && selfHosted ? ' · ' : ''}
-                  {item.current && selfHosted ? 'Self-hosted' : ''}
+                  {item.region && item.current && selfHosted && !managed ? ' · ' : ''}
+                  {item.current && selfHosted && !managed ? 'Self-hosted' : ''}
                 </div>
               )}
               {state.detail && state.detail !== state.label && (
@@ -957,14 +994,14 @@ function WandIcon(props) {
 }
 
 // Mirrors the mobius.you deploy composer: name + a live "included / storage"
-// launch summary, resource limits tucked behind Advanced settings, and a
-// Deploy Möbius action. Kept as a modal and on the Möbius shell theme.
+// launch summary, resources, access, and release controls tucked behind
+// Advanced settings, and a Deploy Möbius action.
 function NewDeploymentModal({
   onClose, onCreate, planLimits, plan, updatePolicies,
 }) {
   const [name, setName] = useState('My Möbius')
   const [managedAuth, setManagedAuth] = useState(true)
-  const [updatePolicy, setUpdatePolicy] = useState('automatic')
+  const [updatePolicy, setUpdatePolicy] = useState('manual')
   const [cpu, setCpu] = useState('')
   const [memory, setMemory] = useState('')
   const [volume, setVolume] = useState(planLimits ? String(planLimits.default_volume_mb) : '')
@@ -1065,15 +1102,31 @@ function NewDeploymentModal({
             <summary>
               <span className="id-disclosure-title">Advanced settings</span>
               <span className="id-disclosure-state">
-                {managedAuth ? 'Möbius sign-in on' : 'Local sign-in'}
-                {supportsUpdatePolicy ? ` · ${updatePolicy === 'automatic' ? 'Auto updates on' : 'Manual updates'}` : ''}
-                {storageLabel ? ` · ${storageLabel}` : ''}
+                {storageLabel || 'Default resources'}
+                {` · ${managedAuth ? 'Möbius sign-in on' : 'Local sign-in'}`}
+                {supportsUpdatePolicy ? ` · Automatic updates ${updatePolicy === 'automatic' ? 'on' : 'off'}` : ''}
               </span>
               <span className="id-disclosure-caret" aria-hidden="true">
                 <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="m9 6 6 6-6 6" /></svg>
               </span>
             </summary>
             <div className="id-disclosure-body">
+              {planLimits && (
+                <>
+                  <p className="id-eyebrow">Resources</p>
+                  <ResourceFields
+                    limits={planLimits}
+                    cpu={cpu}
+                    memory={memory}
+                    volume={volume}
+                    onCpu={setCpu}
+                    onMemory={setMemory}
+                    onVolume={setVolume}
+                    disabled={pending}
+                  />
+                </>
+              )}
+              <p className="id-eyebrow">Access</p>
               <label className="id-switch">
                 <input
                   type="checkbox"
@@ -1090,7 +1143,7 @@ function NewDeploymentModal({
               </label>
               {supportsUpdatePolicy && (
                 <>
-                  <p className="id-eyebrow">Updates</p>
+                  <p className="id-eyebrow">Releases</p>
                   <label className="id-switch">
                     <input
                       type="checkbox"
@@ -1103,25 +1156,10 @@ function NewDeploymentModal({
                     />
                     <span className="id-switch-track" aria-hidden="true" />
                     <span className="id-switch-copy">
-                      <strong>Automatic updates</strong>
-                      <span>Let Railway install new verified Möbius releases. Turn this off to keep the deployed version until you choose to update it.</span>
+                      <strong>Automatic release updates</strong>
+                      <span>Install verified Möbius releases automatically. Leave this off to choose when to update.</span>
                     </span>
                   </label>
-                </>
-              )}
-              {planLimits && (
-                <>
-                  <p className="id-eyebrow">Resource limits</p>
-                  <ResourceFields
-                    limits={planLimits}
-                    cpu={cpu}
-                    memory={memory}
-                    volume={volume}
-                    onCpu={setCpu}
-                    onMemory={setMemory}
-                    onVolume={setVolume}
-                    disabled={pending}
-                  />
                 </>
               )}
               <p className="id-cost-note">
@@ -1483,7 +1521,7 @@ function ManageDeploymentModal({
     instance.resources.volume_size_mb ? String(instance.resources.volume_size_mb) : '',
   )
   const [updatePolicy, setUpdatePolicy] = useState(
-    instance.updates?.policy || 'automatic',
+    instance.updates?.policy || 'manual',
   )
   const [pending, setPending] = useState('')
   const [error, setError] = useState('')
@@ -1494,6 +1532,9 @@ function ManageDeploymentModal({
   const retryingDelete = String(instance.status).toLowerCase() === 'delete_failed'
   const updateState = String(instance.updates?.state || '').toLowerCase()
   const updatesApplying = ['pending', 'checking', 'retry'].includes(updateState)
+  const resourceSummary = instance.resources.volume_size_mb
+    ? 'Change CPU or RAM, or increase storage'
+    : 'Change CPU or RAM'
   const StatusIcon = state.tone === 'danger'
     ? Warning
     : state.tone === 'progress'
@@ -1563,8 +1604,35 @@ function ManageDeploymentModal({
           />
         )}
 
-        {instance.actions.edit_resources && (
-          <div className="id-manage-resources">
+        <div className="id-manage-links">
+          {instance.url && (
+            <button type="button" className="id-btn" onClick={() => window.open(instance.url, '_blank', 'noopener,noreferrer')}>
+              Open Möbius <ArrowUpRight width={16} />
+            </button>
+          )}
+          {instance.railway_url && !retryingDelete && (
+            <button type="button" className="id-btn" onClick={() => window.open(instance.railway_url, '_blank', 'noopener,noreferrer')}>
+              Open Railway <ArrowUpRight width={16} />
+            </button>
+          )}
+          {instance.actions.retry && !retryingDelete && (
+            <button type="button" className="id-btn" disabled={Boolean(pending)} onClick={() => run('retry', () => onRetry(instance.id))}>
+              {pending === 'retry' ? 'Retrying…' : 'Retry deployment'}
+            </button>
+          )}
+        </div>
+
+        <div className="id-manage-settings">
+          {instance.actions.edit_resources && (
+            <details className="id-disclosure id-manage-disclosure">
+              <summary>
+                <span className="id-disclosure-title">Resources</span>
+                <span className="id-disclosure-state">{resourceSummary}</span>
+                <span className="id-disclosure-caret" aria-hidden="true">
+                  <ChevronRight width={15} />
+                </span>
+              </summary>
+              <div className="id-disclosure-body id-manage-resources">
             {planLimits ? (
               <ResourceFields
                 limits={planLimits}
@@ -1650,68 +1718,72 @@ function ManageDeploymentModal({
                 </button>
               </div>
             ) : null}
-          </div>
-        )}
+              </div>
+            </details>
+          )}
 
-        {instance.actions.edit_updates && instance.updates && (
-          <div className="id-manage-updates">
-            <label className="id-switch">
-              <input
-                type="checkbox"
-                className="id-switch-input"
-                checked={updatePolicy === 'automatic'}
-                disabled={Boolean(pending)}
-                onChange={event => setUpdatePolicy(
-                  event.target.checked ? 'automatic' : 'manual',
+          {instance.actions.edit_updates && instance.updates && (
+            <details className="id-disclosure id-manage-disclosure">
+              <summary>
+                <span className="id-disclosure-title">Automatic release updates</span>
+                <span className="id-disclosure-state">{updatePolicy === 'automatic' ? 'On' : 'Off'}</span>
+                <span className="id-disclosure-caret" aria-hidden="true">
+                  <ChevronRight width={15} />
+                </span>
+              </summary>
+              <div className="id-disclosure-body id-manage-updates">
+                <label className="id-switch">
+                  <input
+                    type="checkbox"
+                    className="id-switch-input"
+                    checked={updatePolicy === 'automatic'}
+                    disabled={Boolean(pending)}
+                    onChange={event => setUpdatePolicy(event.target.checked ? 'automatic' : 'manual')}
+                  />
+                  <span className="id-switch-track" aria-hidden="true" />
+                  <span className="id-switch-copy">
+                    <strong>Automatic release updates</strong>
+                    <span>Install verified Möbius releases automatically. Leave this off to choose when to update.</span>
+                  </span>
+                </label>
+                {updatesApplying && (
+                  <small className="id-update-state" role="status">
+                    {updateState === 'retry'
+                      ? (instance.updates.error || 'Railway could not apply this yet. Möbius will retry.')
+                      : 'Railway is applying this setting.'}
+                  </small>
                 )}
-              />
-              <span className="id-switch-track" aria-hidden="true" />
-              <span className="id-switch-copy">
-                <strong>Automatic updates</strong>
-                <span>Railway installs new verified Möbius releases. Turn this off to keep the current version until you choose to update it.</span>
-              </span>
-            </label>
-            {updatesApplying && (
-              <small className="id-update-state" role="status">
-                {updateState === 'retry'
-                  ? (instance.updates.error || 'Railway could not apply this yet. Möbius will retry.')
-                  : 'Railway is applying this update setting.'}
-              </small>
-            )}
-            <button
-              type="button"
-              className="id-btn"
-              disabled={Boolean(pending) || updatePolicy === instance.updates.policy}
-              onClick={() => run('updates', () => onUpdates(instance.id, {
-                update_policy: updatePolicy,
-              }))}
-            >
-              {pending === 'updates' ? 'Saving…' : 'Save update setting'}
-            </button>
-          </div>
-        )}
-
-        {error && <div className="id-signin-error" role="alert">{error}</div>}
-
-        <div className="id-manage-links">
-          {instance.url && (
-            <button type="button" className="id-btn" onClick={() => window.open(instance.url, '_blank', 'noopener,noreferrer')}>
-              Open Möbius <ArrowUpRight width={16} />
-            </button>
+                <button
+                  type="button"
+                  className="id-btn"
+                  disabled={Boolean(pending) || updatePolicy === instance.updates.policy}
+                  onClick={() => run('updates', () => onUpdates(instance.id, {
+                    update_policy: updatePolicy,
+                  }))}
+                >
+                  {pending === 'updates' ? 'Saving…' : 'Save setting'}
+                </button>
+              </div>
+            </details>
           )}
-          {instance.railway_url && !retryingDelete && (
-            <button type="button" className="id-btn" onClick={() => window.open(instance.railway_url, '_blank', 'noopener,noreferrer')}>
-              Open Railway <ArrowUpRight width={16} />
-            </button>
-          )}
-          {instance.actions.retry && !retryingDelete && (
-            <button type="button" className="id-btn" disabled={Boolean(pending)} onClick={() => run('retry', () => onRetry(instance.id))}>
-              {pending === 'retry' ? 'Retrying…' : 'Retry deployment'}
-            </button>
+
+          {instance.actions.recover !== false && (
+            <details className="id-disclosure id-manage-disclosure">
+              <summary>
+                <span className="id-disclosure-title">Recovery</span>
+                <span className="id-disclosure-state">Open a temporary repair session</span>
+                <span className="id-disclosure-caret" aria-hidden="true">
+                  <ChevronRight width={15} />
+                </span>
+              </summary>
+              <div className="id-disclosure-body id-manage-recovery">
+                <RecoverySection token={token} instance={instance} />
+              </div>
+            </details>
           )}
         </div>
 
-        <RecoverySection token={token} instance={instance} />
+        {error && <div className="id-signin-error" role="alert">{error}</div>}
 
         {instance.actions.delete && (
           confirmDelete ? (
@@ -1982,6 +2054,7 @@ export default function App({ appId, token }) {
   const [managingDeployment, setManagingDeployment] = useState(null)
   const [managingRailway, setManagingRailway] = useState(false)
   const [connectingRailway, setConnectingRailway] = useState(false)
+  const [adoptingCurrent, setAdoptingCurrent] = useState(false)
   const [uploading, setUploading] = useState(false)
   const fileRef = useRef(null)
   const loadSequenceRef = useRef(0)
@@ -2140,6 +2213,22 @@ export default function App({ appId, token }) {
     const result = await identityRequest(token, `/railway${path}`, options)
     await loadRailway()
     return result
+  }
+
+  const adoptCurrentDeployment = async () => {
+    if (adoptingCurrent) return
+    setAdoptingCurrent(true)
+    setRailwayError('')
+    try {
+      await identityRequest(token, '/railway/deployments/adopt-current', {
+        method: 'POST',
+      })
+      await Promise.all([load(), loadRailway()])
+    } catch (requestError) {
+      setRailwayError(requestError.message)
+    } finally {
+      setAdoptingCurrent(false)
+    }
   }
 
   const connectRailway = async (replace = false) => {
@@ -2345,8 +2434,10 @@ export default function App({ appId, token }) {
                 selfHosted={mode === 'linked'}
                 onNew={() => setCreatingDeployment(true)}
                 onManage={setManagingDeployment}
+                onAdoptCurrent={adoptCurrentDeployment}
                 onConnect={() => connectRailway()}
                 connecting={connectingRailway}
+                adoptingCurrent={adoptingCurrent}
                 onManageConnection={() => setManagingRailway(true)}
                 onReconnect={() => {
                   setReconnecting(true)

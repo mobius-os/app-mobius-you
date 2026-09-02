@@ -206,7 +206,7 @@ function validRailwayInstance(instance) {
   ) return false
   const actions = instance.actions
   if (
-    !exactKeys(actions, ['edit_resources', 'retry', 'delete'], ['edit_updates'])
+    !exactKeys(actions, ['edit_resources', 'retry', 'delete'], ['edit_updates', 'recover'])
     || !Object.values(actions).every(value => typeof value === 'boolean')
   ) return false
   if (instance.updates === undefined) return true
@@ -270,7 +270,7 @@ export function parseRailway(value) {
     if (
       !exactKeys(connection, [
         'connected', 'account', 'workspace', 'plan', 'deploy_blocked',
-      ], ['plan_limits', 'update_policies'])
+      ], ['plan_limits', 'update_policies', 'adopt_current'])
       || typeof connection.connected !== 'boolean'
       || typeof connection.account !== 'string'
       || connection.account.length > 320
@@ -292,6 +292,10 @@ export function parseRailway(value) {
       connection.update_policies !== undefined
       && !validImageUpdatePolicies(connection.update_policies)
     ) delete connection.update_policies
+    if (
+      connection.adopt_current !== undefined
+      && typeof connection.adopt_current !== 'boolean'
+    ) delete connection.adopt_current
   }
   return value
 }
