@@ -399,7 +399,10 @@ test('wires automatic and manual image-update choices through the server bridge'
   assert.match(source, /`\/deployments\/\$\{id\}\/updates`/)
   assert.match(source, /update_policy: updatePolicy/)
   assert.match(source, /className="id-release-setting"/)
-  assert.match(source, /Save release setting/)
+  assert.match(source, /Automatic release updates/)
+  assert.match(source, /checked=\{updatePolicy === 'automatic'\}/)
+  assert.match(source, /Save setting/)
+  assert.match(source, /instance\.updates\?\.policy \|\| 'manual'/)
   assert.match(source, /planLimits \|\| supportsUpdatePolicy/)
 })
 

@@ -1519,7 +1519,7 @@ function ManageDeploymentModal({
     instance.resources.volume_size_mb ? String(instance.resources.volume_size_mb) : '',
   )
   const [updatePolicy, setUpdatePolicy] = useState(
-    instance.updates?.policy || 'automatic',
+    instance.updates?.policy || 'manual',
   )
   const [pending, setPending] = useState('')
   const [error, setError] = useState('')
@@ -1530,6 +1530,9 @@ function ManageDeploymentModal({
   const retryingDelete = String(instance.status).toLowerCase() === 'delete_failed'
   const updateState = String(instance.updates?.state || '').toLowerCase()
   const updatesApplying = ['pending', 'checking', 'retry'].includes(updateState)
+  const resourceSummary = instance.resources.volume_size_mb
+    ? 'Change CPU or RAM, or increase storage'
+    : 'Change CPU or RAM'
   const StatusIcon = state.tone === 'danger'
     ? Warning
     : state.tone === 'progress'
@@ -1599,8 +1602,35 @@ function ManageDeploymentModal({
           />
         )}
 
-        {instance.actions.edit_resources && (
-          <div className="id-manage-resources">
+        <div className="id-manage-links">
+          {instance.url && (
+            <button type="button" className="id-btn" onClick={() => window.open(instance.url, '_blank', 'noopener,noreferrer')}>
+              Open Möbius <ArrowUpRight width={16} />
+            </button>
+          )}
+          {instance.railway_url && !retryingDelete && (
+            <button type="button" className="id-btn" onClick={() => window.open(instance.railway_url, '_blank', 'noopener,noreferrer')}>
+              Open Railway <ArrowUpRight width={16} />
+            </button>
+          )}
+          {instance.actions.retry && !retryingDelete && (
+            <button type="button" className="id-btn" disabled={Boolean(pending)} onClick={() => run('retry', () => onRetry(instance.id))}>
+              {pending === 'retry' ? 'Retrying…' : 'Retry deployment'}
+            </button>
+          )}
+        </div>
+
+        <div className="id-manage-settings">
+          {instance.actions.edit_resources && (
+            <details className="id-disclosure id-manage-disclosure">
+              <summary>
+                <span className="id-disclosure-title">Resources</span>
+                <span className="id-disclosure-state">{resourceSummary}</span>
+                <span className="id-disclosure-caret" aria-hidden="true">
+                  <ChevronRight width={15} />
+                </span>
+              </summary>
+              <div className="id-disclosure-body id-manage-resources">
             {planLimits ? (
               <ResourceFields
                 limits={planLimits}
@@ -1686,70 +1716,72 @@ function ManageDeploymentModal({
                 </button>
               </div>
             ) : null}
-          </div>
-        )}
-
-        {instance.actions.edit_updates && instance.updates && (
-          <div className="id-manage-updates">
-            <div className="id-release-setting-copy">
-              <strong>New Möbius releases</strong>
-              <span>Manual keeps this version until you choose to update. Automatic installs verified releases for you.</span>
-            </div>
-            <label className="id-field-block">
-              <span className="id-label">Release updates</span>
-              <select
-                className="id-select"
-                value={updatePolicy}
-                disabled={Boolean(pending)}
-                onChange={event => setUpdatePolicy(event.target.value)}
-              >
-                <option value="manual">Manual</option>
-                <option value="automatic">Automatic</option>
-              </select>
-            </label>
-            {updatesApplying && (
-              <small className="id-update-state" role="status">
-                {updateState === 'retry'
-                  ? (instance.updates.error || 'Railway could not apply this yet. Möbius will retry.')
-                  : 'Railway is applying this update setting.'}
-              </small>
-            )}
-            <button
-              type="button"
-              className="id-btn"
-              disabled={Boolean(pending) || updatePolicy === instance.updates.policy}
-              onClick={() => run('updates', () => onUpdates(instance.id, {
-                update_policy: updatePolicy,
-              }))}
-            >
-              {pending === 'updates' ? 'Saving…' : 'Save release setting'}
-            </button>
-          </div>
-        )}
-
-        {error && <div className="id-signin-error" role="alert">{error}</div>}
-
-        <div className="id-manage-links">
-          {instance.url && (
-            <button type="button" className="id-btn" onClick={() => window.open(instance.url, '_blank', 'noopener,noreferrer')}>
-              Open Möbius <ArrowUpRight width={16} />
-            </button>
+              </div>
+            </details>
           )}
-          {instance.railway_url && !retryingDelete && (
-            <button type="button" className="id-btn" onClick={() => window.open(instance.railway_url, '_blank', 'noopener,noreferrer')}>
-              Open Railway <ArrowUpRight width={16} />
-            </button>
+
+          {instance.actions.edit_updates && instance.updates && (
+            <details className="id-disclosure id-manage-disclosure">
+              <summary>
+                <span className="id-disclosure-title">Automatic release updates</span>
+                <span className="id-disclosure-state">{updatePolicy === 'automatic' ? 'On' : 'Off'}</span>
+                <span className="id-disclosure-caret" aria-hidden="true">
+                  <ChevronRight width={15} />
+                </span>
+              </summary>
+              <div className="id-disclosure-body id-manage-updates">
+                <label className="id-switch">
+                  <input
+                    type="checkbox"
+                    className="id-switch-input"
+                    checked={updatePolicy === 'automatic'}
+                    disabled={Boolean(pending)}
+                    onChange={event => setUpdatePolicy(event.target.checked ? 'automatic' : 'manual')}
+                  />
+                  <span className="id-switch-track" aria-hidden="true" />
+                  <span className="id-switch-copy">
+                    <strong>Automatic release updates</strong>
+                    <span>Install verified Möbius releases automatically. Leave this off to choose when to update.</span>
+                  </span>
+                </label>
+                {updatesApplying && (
+                  <small className="id-update-state" role="status">
+                    {updateState === 'retry'
+                      ? (instance.updates.error || 'Railway could not apply this yet. Möbius will retry.')
+                      : 'Railway is applying this setting.'}
+                  </small>
+                )}
+                <button
+                  type="button"
+                  className="id-btn"
+                  disabled={Boolean(pending) || updatePolicy === instance.updates.policy}
+                  onClick={() => run('updates', () => onUpdates(instance.id, {
+                    update_policy: updatePolicy,
+                  }))}
+                >
+                  {pending === 'updates' ? 'Saving…' : 'Save setting'}
+                </button>
+              </div>
+            </details>
           )}
-          {instance.actions.retry && !retryingDelete && (
-            <button type="button" className="id-btn" disabled={Boolean(pending)} onClick={() => run('retry', () => onRetry(instance.id))}>
-              {pending === 'retry' ? 'Retrying…' : 'Retry deployment'}
-            </button>
+
+          {instance.actions.recover !== false && (
+            <details className="id-disclosure id-manage-disclosure">
+              <summary>
+                <span className="id-disclosure-title">Recovery</span>
+                <span className="id-disclosure-state">Open a temporary repair session</span>
+                <span className="id-disclosure-caret" aria-hidden="true">
+                  <ChevronRight width={15} />
+                </span>
+              </summary>
+              <div className="id-disclosure-body id-manage-recovery">
+                <RecoverySection token={token} instance={instance} />
+              </div>
+            </details>
           )}
         </div>
 
-        {instance.actions.recover !== false && (
-          <RecoverySection token={token} instance={instance} />
-        )}
+        {error && <div className="id-signin-error" role="alert">{error}</div>}
 
         {instance.actions.delete && (
           confirmDelete ? (
