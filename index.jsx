@@ -703,12 +703,10 @@ function Deployments({
   selfHosted,
   onNew,
   onManage,
-  onAdoptCurrent,
   onConnect,
   onReconnect,
   onManageConnection,
   connecting,
-  adoptingCurrent,
 }) {
   const managedById = new Map((railway?.instances || []).map(item => [item.id, item]))
   const deploymentOrigin = value => {
@@ -796,24 +794,6 @@ function Deployments({
           </div>
         </div>
       )}
-      {connected && railway.connection?.adopt_current && (
-        <div className="id-railway-callout">
-          <div>
-            <strong>Add release controls to this Möbius</strong>
-            <span>Möbius will verify this exact address in the selected Railway workspace. Your current release setting will not change.</span>
-          </div>
-          <button
-            type="button"
-            className="id-btn id-btn--primary"
-            onClick={onAdoptCurrent}
-            disabled={adoptingCurrent}
-          >
-            {adoptingCurrent
-              ? <><ArrowRotateCw className="id-spin" width={16} /> Verifying…</>
-              : 'Verify & connect'}
-          </button>
-        </div>
-      )}
       <div className="id-deployments">
         {deployments.map(item => {
           const managed = managedById.get(item.id)
@@ -895,7 +875,7 @@ function Deployments({
       {connected && railway.connection && (
         <div className="id-dep-foot">
           <span className="id-railway-conn-account">
-            Hosted with Railway · {railway.connection.workspace || railway.connection.account || 'Connected'}
+            Railway workspace connected · {railway.connection.workspace || railway.connection.account || 'Connected'}
           </span>
           {planTitle(railway.connection.plan) && (
             <span className="id-railway-plan">{planTitle(railway.connection.plan)}</span>
@@ -994,14 +974,13 @@ function WandIcon(props) {
 }
 
 // Mirrors the mobius.you deploy composer: name + a live "included / storage"
-// launch summary, resources, access, and release controls tucked behind
-// Advanced settings, and a Deploy Möbius action.
+// launch summary, resources, and access tucked behind Advanced settings, plus
+// a Deploy Möbius action. Container updates stay in the normal Settings flow.
 function NewDeploymentModal({
-  onClose, onCreate, planLimits, plan, updatePolicies,
+  onClose, onCreate, planLimits, plan,
 }) {
   const [name, setName] = useState('My Möbius')
   const [managedAuth, setManagedAuth] = useState(true)
-  const [updatePolicy, setUpdatePolicy] = useState('manual')
   const [cpu, setCpu] = useState('')
   const [memory, setMemory] = useState('')
   const [volume, setVolume] = useState(planLimits ? String(planLimits.default_volume_mb) : '')
@@ -1009,9 +988,6 @@ function NewDeploymentModal({
   const [error, setError] = useState('')
   const inputRef = useRef(null)
   const dialogRef = useDialog(onClose, pending, inputRef)
-  const supportsUpdatePolicy = Array.isArray(updatePolicies)
-    && updatePolicies.includes('automatic')
-    && updatePolicies.includes('manual')
 
   const submit = async event => {
     event.preventDefault()
@@ -1026,7 +1002,6 @@ function NewDeploymentModal({
         memory_mb: memory ? Number(memory) : null,
         volume_mb: volume ? Number(volume) : null,
       }
-      if (supportsUpdatePolicy) settings.update_policy = updatePolicy
       await onCreate(settings)
       onClose()
     } catch (requestError) {
@@ -1097,14 +1072,13 @@ function NewDeploymentModal({
           <p className="id-launch-summary">{summaryRow}</p>
         )}
 
-        {planLimits || supportsUpdatePolicy ? (
+        {planLimits ? (
           <details className="id-disclosure">
             <summary>
               <span className="id-disclosure-title">Advanced settings</span>
               <span className="id-disclosure-state">
                 {storageLabel || 'Default resources'}
                 {` · ${managedAuth ? 'Möbius sign-in on' : 'Local sign-in'}`}
-                {supportsUpdatePolicy ? ` · Automatic updates ${updatePolicy === 'automatic' ? 'on' : 'off'}` : ''}
               </span>
               <span className="id-disclosure-caret" aria-hidden="true">
                 <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="m9 6 6 6-6 6" /></svg>
@@ -1141,27 +1115,6 @@ function NewDeploymentModal({
                   <span>Secure your Möbius with your mobius.you account. Disable this to set up a custom username and password on first boot.</span>
                 </span>
               </label>
-              {supportsUpdatePolicy && (
-                <>
-                  <p className="id-eyebrow">Releases</p>
-                  <label className="id-switch">
-                    <input
-                      type="checkbox"
-                      className="id-switch-input"
-                      checked={updatePolicy === 'automatic'}
-                      disabled={pending}
-                      onChange={event => setUpdatePolicy(
-                        event.target.checked ? 'automatic' : 'manual',
-                      )}
-                    />
-                    <span className="id-switch-track" aria-hidden="true" />
-                    <span className="id-switch-copy">
-                      <strong>Automatic release updates</strong>
-                      <span>Install verified Möbius releases automatically. Leave this off to choose when to update.</span>
-                    </span>
-                  </label>
-                </>
-              )}
               <p className="id-cost-note">
                 <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M12 11v5" /><path d="M12 7.5h.01" /></svg>
                 <span><strong>Möbius doesn't charge you.</strong> We use Railway to make launching your Möbius agents as seamless as possible; Railway bills your own account for actual usage.</span>
@@ -1504,7 +1457,7 @@ function DeletionRecoverySection({
 }
 
 function ManageDeploymentModal({
-  instance, onClose, onCompute, onStorage, onUpdates, onRetry, onDelete,
+  instance, onClose, onCompute, onStorage, onRetry, onDelete,
   onConfirmAbsent, planLimits, token,
 }) {
   // Selects use '' to mean "plan maximum"; if the deployment already sits at the
@@ -1520,9 +1473,6 @@ function ManageDeploymentModal({
   const [volume, setVolume] = useState(
     instance.resources.volume_size_mb ? String(instance.resources.volume_size_mb) : '',
   )
-  const [updatePolicy, setUpdatePolicy] = useState(
-    instance.updates?.policy || 'manual',
-  )
   const [pending, setPending] = useState('')
   const [error, setError] = useState('')
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -1530,8 +1480,6 @@ function ManageDeploymentModal({
   const dialogRef = useDialog(onClose, Boolean(pending), closeRef)
   const state = deploymentPresentation(instance)
   const retryingDelete = String(instance.status).toLowerCase() === 'delete_failed'
-  const updateState = String(instance.updates?.state || '').toLowerCase()
-  const updatesApplying = ['pending', 'checking', 'retry'].includes(updateState)
   const resourceSummary = instance.resources.volume_size_mb
     ? 'Change CPU or RAM, or increase storage'
     : 'Change CPU or RAM'
@@ -1718,51 +1666,6 @@ function ManageDeploymentModal({
                 </button>
               </div>
             ) : null}
-              </div>
-            </details>
-          )}
-
-          {instance.actions.edit_updates && instance.updates && (
-            <details className="id-disclosure id-manage-disclosure">
-              <summary>
-                <span className="id-disclosure-title">Automatic release updates</span>
-                <span className="id-disclosure-state">{updatePolicy === 'automatic' ? 'On' : 'Off'}</span>
-                <span className="id-disclosure-caret" aria-hidden="true">
-                  <ChevronRight width={15} />
-                </span>
-              </summary>
-              <div className="id-disclosure-body id-manage-updates">
-                <label className="id-switch">
-                  <input
-                    type="checkbox"
-                    className="id-switch-input"
-                    checked={updatePolicy === 'automatic'}
-                    disabled={Boolean(pending)}
-                    onChange={event => setUpdatePolicy(event.target.checked ? 'automatic' : 'manual')}
-                  />
-                  <span className="id-switch-track" aria-hidden="true" />
-                  <span className="id-switch-copy">
-                    <strong>Automatic release updates</strong>
-                    <span>Install verified Möbius releases automatically. Leave this off to choose when to update.</span>
-                  </span>
-                </label>
-                {updatesApplying && (
-                  <small className="id-update-state" role="status">
-                    {updateState === 'retry'
-                      ? (instance.updates.error || 'Railway could not apply this yet. Möbius will retry.')
-                      : 'Railway is applying this setting.'}
-                  </small>
-                )}
-                <button
-                  type="button"
-                  className="id-btn"
-                  disabled={Boolean(pending) || updatePolicy === instance.updates.policy}
-                  onClick={() => run('updates', () => onUpdates(instance.id, {
-                    update_policy: updatePolicy,
-                  }))}
-                >
-                  {pending === 'updates' ? 'Saving…' : 'Save setting'}
-                </button>
               </div>
             </details>
           )}
@@ -2054,7 +1957,6 @@ export default function App({ appId, token }) {
   const [managingDeployment, setManagingDeployment] = useState(null)
   const [managingRailway, setManagingRailway] = useState(false)
   const [connectingRailway, setConnectingRailway] = useState(false)
-  const [adoptingCurrent, setAdoptingCurrent] = useState(false)
   const [uploading, setUploading] = useState(false)
   const fileRef = useRef(null)
   const loadSequenceRef = useRef(0)
@@ -2213,22 +2115,6 @@ export default function App({ appId, token }) {
     const result = await identityRequest(token, `/railway${path}`, options)
     await loadRailway()
     return result
-  }
-
-  const adoptCurrentDeployment = async () => {
-    if (adoptingCurrent) return
-    setAdoptingCurrent(true)
-    setRailwayError('')
-    try {
-      await identityRequest(token, '/railway/deployments/adopt-current', {
-        method: 'POST',
-      })
-      await Promise.all([load(), loadRailway()])
-    } catch (requestError) {
-      setRailwayError(requestError.message)
-    } finally {
-      setAdoptingCurrent(false)
-    }
   }
 
   const connectRailway = async (replace = false) => {
@@ -2434,10 +2320,8 @@ export default function App({ appId, token }) {
                 selfHosted={mode === 'linked'}
                 onNew={() => setCreatingDeployment(true)}
                 onManage={setManagingDeployment}
-                onAdoptCurrent={adoptCurrentDeployment}
                 onConnect={() => connectRailway()}
                 connecting={connectingRailway}
-                adoptingCurrent={adoptingCurrent}
                 onManageConnection={() => setManagingRailway(true)}
                 onReconnect={() => {
                   setReconnecting(true)
@@ -2492,7 +2376,6 @@ export default function App({ appId, token }) {
           <NewDeploymentModal
             planLimits={railway?.connection?.plan_limits}
             plan={railway?.connection?.plan}
-            updatePolicies={railway?.connection?.update_policies}
             onClose={() => setCreatingDeployment(false)}
             onCreate={payload => railwayAction('/deployments', {
               method: 'POST',
@@ -2513,11 +2396,6 @@ export default function App({ appId, token }) {
               body: JSON.stringify(payload),
             })}
             onStorage={(id, payload) => railwayAction(`/deployments/${id}/storage`, {
-              method: 'PATCH',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(payload),
-            })}
-            onUpdates={(id, payload) => railwayAction(`/deployments/${id}/updates`, {
               method: 'PATCH',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(payload),

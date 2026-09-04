@@ -302,44 +302,6 @@ test('accepts advertised image-update controls without requiring them from older
   }))
 })
 
-test('accepts the optional current-deployment adoption capability and safe actions', () => {
-  const railway = {
-    railway_access: 'available',
-    connection: {
-      connected: true,
-      account: 'owner@example.com',
-      workspace: 'Personal',
-      plan: 'hobby',
-      deploy_blocked: '',
-      adopt_current: true,
-    },
-    instances: [{
-      id: 'mob_current',
-      name: 'Current Möbius',
-      status: 'ready',
-      url: 'https://current.example',
-      railway_url: 'https://railway.com/project/project',
-      current_step: 'Ready',
-      last_error: null,
-      resources: { cpu: null, memory_mb: null, volume_size_mb: 5000, plan: 'hobby' },
-      updates: { policy: 'automatic', state: 'current', error: null },
-      actions: {
-        edit_resources: false,
-        edit_updates: true,
-        recover: false,
-        retry: false,
-        delete: false,
-      },
-    }],
-  }
-  assert.equal(parseRailway(railway), railway)
-  const drifted = parseRailway({
-    ...railway,
-    connection: { ...railway.connection, adopt_current: 'yes' },
-  })
-  assert.equal(drifted.connection.adopt_current, undefined)
-})
-
 test('presents deletion failures as deletion recovery, never as a build retry', () => {
   const failed = deploymentPresentation({
     status: 'delete_failed',
@@ -391,27 +353,37 @@ test('tracks only Railway states that can settle without another owner action', 
   }), false)
 })
 
-test('wires automatic and manual image-update choices through the server bridge', async () => {
+test('keeps container replacement in Möbius Settings instead of deployment controls', async () => {
   const source = await readFile(new URL('./index.jsx', import.meta.url), 'utf8')
 
-  assert.match(source, /const \[updatePolicy, setUpdatePolicy\] = useState\('manual'\)/)
-  assert.match(source, /settings\.update_policy = updatePolicy/)
-  assert.match(source, /`\/deployments\/\$\{id\}\/updates`/)
-  assert.match(source, /update_policy: updatePolicy/)
-  assert.doesNotMatch(source, /className="id-release-setting"/)
-  assert.match(source, /Automatic release updates/)
-  assert.match(source, /checked=\{updatePolicy === 'automatic'\}/)
-  assert.match(source, /Resources[\s\S]*Sign in with Möbius[\s\S]*Automatic release updates/)
-  assert.match(source, /Save setting/)
-  assert.match(source, /instance\.updates\?\.policy \|\| 'manual'/)
-  assert.match(source, /planLimits \|\| supportsUpdatePolicy/)
+  assert.doesNotMatch(source, /Automatic release updates/)
+  assert.doesNotMatch(source, /settings\.update_policy/)
+  assert.doesNotMatch(source, /`\/deployments\/\$\{id\}\/updates`/)
+  assert.doesNotMatch(source, /update_policy:/)
+  assert.doesNotMatch(source, /adopt-current|adoptCurrent|adoptingCurrent|Connect this Railway deployment/)
+  assert.match(source, /Container updates stay in the normal Settings flow/)
 })
 
-test('wires exact-origin current deployment adoption without exposing launcher actions', async () => {
+test('lists only deployments the account service already knows', async () => {
   const source = await readFile(new URL('./index.jsx', import.meta.url), 'utf8')
 
-  assert.match(source, /\/railway\/deployments\/adopt-current/)
-  assert.match(source, /Your current release setting will not change/)
+  const parsed = parseRailway({
+    railway_access: 'available',
+    connection: {
+      connected: true,
+      account: 'owner@example.com',
+      workspace: 'Personal',
+      plan: 'hobby',
+      deploy_blocked: '',
+      adopt_current: true,
+    },
+    instances: [],
+  })
+  assert.equal(parsed.connection.adopt_current, undefined)
+
+  assert.doesNotMatch(source, /\/railway\/deployments\/adopt-current/)
+  assert.doesNotMatch(source, /Hosted with Railway/)
+  assert.match(source, /Railway workspace connected/)
   assert.match(source, /managedByOrigin\.get\(deploymentOrigin\(item\.url\)\)/)
   assert.match(source, /instance\.actions\.recover !== false/)
 })
