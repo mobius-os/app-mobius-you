@@ -292,10 +292,10 @@ export function parseRailway(value) {
       connection.update_policies !== undefined
       && !validImageUpdatePolicies(connection.update_policies)
     ) delete connection.update_policies
-    if (
-      connection.adopt_current !== undefined
-      && typeof connection.adopt_current !== 'boolean'
-    ) delete connection.adopt_current
+    // Older account hosts advertised an importer for deployments created
+    // outside Möbius. Retire that capability at this boundary so a staged
+    // service rollout cannot revive its UI or blank the Railway panel.
+    delete connection.adopt_current
   }
   return value
 }
