@@ -163,12 +163,14 @@ components:
           items: { $ref: '#/components/schemas/AgentModel' }
         balance:
           type: object
+          additionalProperties: false
           required: [available_units]
           properties:
             available_units: { type: integer, minimum: 0 }
-            available_usd: { type: string }
+            available_usd: { type: string, pattern: '^[0-9]+(?:\.[0-9]{1,6})?$' }
         trial:
           type: object
+          additionalProperties: false
           required: [state]
           properties:
             state: { type: string, enum: [ready, active, expired, ineligible] }
@@ -191,11 +193,12 @@ components:
         retention: { type: object, maxProperties: 0 }
     AgentModel:
       type: object
+      additionalProperties: false
       required: [id, name, pricing]
       properties:
         id: { type: string, pattern: '^[a-z0-9][a-z0-9_-]{0,79}$' }
         name: { type: string, minLength: 1, maxLength: 80 }
-        context_window: { type: integer, minimum: 1 }
+        context_window: { type: integer, minimum: 1, maximum: 9007199254740991 }
         pricing:
           type: object
           additionalProperties: false
