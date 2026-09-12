@@ -1,6 +1,6 @@
 # Möbius · You
 
-Your Möbius account, profile, and active deployments — inside your own Möbius. A [Möbius](https://github.com/mobius-os) mini-app.
+Your Möbius account, profile, deployments, and model access — inside your own Möbius. A [Möbius](https://github.com/mobius-os) mini-app.
 
 Signed out, it shows only this local deployment. After you link a mobius.you account (or on a managed deployment, automatically), it shows your `@handle`, keeps private account details secondary, and gives you a native place to see and manage every Möbius deployment on that account. Account credentials stay in the Möbius backend; the mini-app receives only its ordinary app token.
 
@@ -30,6 +30,12 @@ The app consumes only the v2 local bridge (`identity-bridge.openapi.yaml`):
 - `deployments` always includes the local deployment.
 
 Self-hosted linking uses the deployed mobius.you protocol (`account-link.openapi.yaml`). The backend chooses `MOBIUS_ACCOUNT_ORIGIN` (default `https://www.mobius.you`) and binds the request, consent, code, grant, and popup message target to the exact HTTPS or loopback client origin. Codes and PKCE verifiers never enter URLs, logs, or browser storage. Avatar bytes are proxied through the authenticated `GET /api/identity/avatar` so the frame's restrictive same-origin image policy stays intact even when the account host moves to another machine.
+
+## Model access
+
+Linked and managed accounts can see their current model credit, activate an available trial, and expand a provider-neutral catalogue of model aliases and token prices. The app reads `GET /api/identity/agent` and activates the trial through `POST /api/identity/agent/trial`; routing identifiers and provider credentials stay behind the local identity bridge.
+
+During the limited test, the account service supplies a fixed notice that conversations sent through Möbius models are stored privately for testing and improvement. This is an informational notice, not a consent control or activation gate. If the shared trial fund is empty, the activation action explains that the account is ready and that the Möbius owner can add more capacity.
 
 ## Railway management
 
