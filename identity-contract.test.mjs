@@ -45,6 +45,13 @@ test('model access accepts stable aliases and rejects hidden or malformed prices
     ...value,
     models: [value.models[0], value.models[0]],
   }))
+  for (const leaked of [
+    { ...value, models: [{ ...value.models[0], provider: 'hidden' }] },
+    { ...value, models: [{ ...value.models[0], pricing: { ...value.models[0].pricing, route: 'hidden' } }] },
+    { ...value, balance: { ...value.balance, provider_account: 'hidden' } },
+    { ...value, trial: { ...value.trial, campaign: 'hidden' } },
+    { ...value, retention: { ...value.retention, training_bucket: 'hidden' } },
+  ]) assert.throws(() => parseAgentAccess(leaked))
   assert.equal(parseAgentAccess({
     agent_access: 'signed_out',
     models: [],

@@ -192,29 +192,43 @@ export function parseAgentAccess(value) {
   for (const model of value.models) {
     const pricing = model?.pricing
     if (
-      typeof model?.id !== 'string'
+      !exactKeys(model, ['id', 'name', 'pricing'], ['context_window'])
+      || typeof model?.id !== 'string'
       || !/^[a-z0-9][a-z0-9_-]{0,79}$/.test(model.id)
       || typeof model?.name !== 'string'
       || !model.name
       || model.name.length > 80
       || !pricing || typeof pricing !== 'object' || Array.isArray(pricing)
+      || !exactKeys(pricing, ['input', 'cached_input', 'output'])
       || !['input', 'cached_input', 'output'].every(kind => (
         Number.isFinite(pricing[kind]) && pricing[kind] >= 0
+      ))
+      || (model.context_window !== undefined && (
+        !Number.isSafeInteger(model.context_window) || model.context_window < 1
       ))
     ) throw new Error('Möbius returned invalid model prices.')
     if (modelIds.has(model.id)) throw new Error('Möbius returned duplicate model aliases.')
     modelIds.add(model.id)
   }
   const trialState = value.trial.state
-  if (!['ready', 'active', 'expired', 'ineligible'].includes(trialState)) {
+  if (
+    !exactKeys(value.trial, ['state'])
+    || !['ready', 'active', 'expired', 'ineligible'].includes(trialState)
+  ) {
     throw new Error('Möbius returned invalid trial state.')
   }
   if (
-    !Number.isSafeInteger(value.balance.available_units)
+    !exactKeys(value.balance, ['available_units'], ['available_usd'])
+    || !Number.isSafeInteger(value.balance.available_units)
     || value.balance.available_units < 0
+    || (value.balance.available_usd !== undefined && (
+      typeof value.balance.available_usd !== 'string'
+      || !/^\d+(?:\.\d{1,6})?$/.test(value.balance.available_usd)
+    ))
   ) throw new Error('Möbius returned an invalid model balance.')
   if (
-    value.retention.policy !== 'local-testing-v1'
+    !exactKeys(value.retention, ['policy', 'notice'])
+    || value.retention.policy !== 'local-testing-v1'
     || typeof value.retention.notice !== 'string'
     || value.retention.notice.length < 20
     || value.retention.notice.length > 500
