@@ -4,14 +4,80 @@ import assert from 'node:assert/strict'
 
 import {
   accountStatus,
+  agentAccessPresentation,
   deploymentNeedsTracking,
   deploymentPresentation,
+  parseAgentAccess,
   parseIdentity,
   parseDeletionDiagnosis,
   parseLinkAttempt,
   parseRailway,
   waitForAccountLink,
 } from './identity-contract.js'
+
+test('model access accepts stable aliases and rejects hidden or malformed prices', () => {
+  const value = {
+    agent_access: 'available',
+    models: [{
+      id: 'evolve',
+      name: 'Evolve',
+      pricing: { input: 0.3, cached_input: 0.01, output: 1.2 },
+      context_window: 1_000_000,
+    }],
+    balance: { available_units: 2_000_000 },
+    trial: { state: 'ready' },
+    retention: {
+      policy: 'local-testing-v1',
+      notice: 'Test conversations are stored privately for testing.',
+    },
+  }
+  assert.equal(parseAgentAccess(value).models[0].name, 'Evolve')
+  assert.throws(() => parseAgentAccess({
+    ...value,
+    models: [{ ...value.models[0], pricing: { input: -1, cached_input: 0, output: 1 } }],
+  }))
+  assert.throws(() => parseAgentAccess({ ...value, provider: 'openrouter' }))
+  assert.throws(() => parseAgentAccess({
+    ...value,
+    balance: { available_units: -1 },
+  }))
+  assert.throws(() => parseAgentAccess({
+    ...value,
+    models: [value.models[0], value.models[0]],
+  }))
+  assert.equal(parseAgentAccess({
+    agent_access: 'signed_out',
+    models: [],
+    balance: {},
+    trial: {},
+    retention: {},
+  }).agent_access, 'signed_out')
+  assert.throws(() => parseAgentAccess({
+    agent_access: 'unavailable',
+    models: [],
+    balance: { available_units: 1 },
+    trial: {},
+    retention: {},
+  }))
+})
+
+test('model access distinguishes a new trial from an older account', () => {
+  const base = {
+    balance: { available_units: 1_500_000 },
+    trial: { state: 'ready' },
+    retention: { policy: 'local-testing-v1', notice: 'Stored privately for testing.' },
+  }
+  assert.deepEqual(agentAccessPresentation(base), {
+    needsActivation: true,
+    title: 'Start with $2 on us',
+    action: 'Activate $2 trial',
+    showBalance: false,
+    empty: false,
+  })
+  const existing = agentAccessPresentation({ ...base, trial: { state: 'expired' } })
+  assert.equal(existing.title, 'Model access is active')
+  assert.equal(existing.needsActivation, false)
+})
 
 const localDeployment = {
   id: 'local',

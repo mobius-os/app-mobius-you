@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Möbius local identity bridge
-  version: 2.0.0
+  version: 2.1.0
   description: The only identity contract exposed to the mini-app. Every route requires the app's reviewed identity_manage capability.
 paths:
   /api/identity:
@@ -12,6 +12,29 @@ paths:
         '200':
           description: Explicit local/account state. The local deployment is always present.
           content: { application/json: { schema: { $ref: '#/components/schemas/Identity' } } }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/IdentityCapabilityRequired' }
+  /api/identity/agent:
+    get:
+      operationId: readLocalAgentAccess
+      description: Returns provider-neutral model aliases, public prices, current credit, trial state, and the non-interactive testing-retention notice.
+      security: [{ appBearer: [] }]
+      responses:
+        '200':
+          description: Available, signed-out, or temporarily unavailable model access.
+          content: { application/json: { schema: { $ref: '#/components/schemas/AgentAccess' } } }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/IdentityCapabilityRequired' }
+  /api/identity/agent/trial:
+    post:
+      operationId: activateLocalAgentTrial
+      description: Activates the account's available model-credit trial. The retention notice is informational and is not an activation gate.
+      security: [{ appBearer: [] }]
+      responses:
+        '200':
+          description: Updated available model access.
+          content: { application/json: { schema: { $ref: '#/components/schemas/AgentAccessAvailable' } } }
+        '409': { description: Signed out, ineligible, already activated, or the shared trial fund is empty. }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/IdentityCapabilityRequired' }
   /api/identity/profile:
@@ -124,6 +147,63 @@ components:
     IdentityCapabilityRequired:
       description: The installed app lacks the reviewed identity_manage grant.
   schemas:
+    AgentAccess:
+      oneOf:
+        - { $ref: '#/components/schemas/AgentAccessAvailable' }
+        - { $ref: '#/components/schemas/AgentAccessInactive' }
+    AgentAccessAvailable:
+      type: object
+      additionalProperties: false
+      required: [agent_access, models, balance, trial, retention]
+      properties:
+        agent_access: { const: available }
+        models:
+          type: array
+          maxItems: 50
+          items: { $ref: '#/components/schemas/AgentModel' }
+        balance:
+          type: object
+          required: [available_units]
+          properties:
+            available_units: { type: integer, minimum: 0 }
+            available_usd: { type: string }
+        trial:
+          type: object
+          required: [state]
+          properties:
+            state: { type: string, enum: [ready, active, expired, ineligible] }
+        retention:
+          type: object
+          additionalProperties: false
+          required: [policy, notice]
+          properties:
+            policy: { const: local-testing-v1 }
+            notice: { type: string, minLength: 20, maxLength: 500 }
+    AgentAccessInactive:
+      type: object
+      additionalProperties: false
+      required: [agent_access, models, balance, trial, retention]
+      properties:
+        agent_access: { type: string, enum: [signed_out, unavailable] }
+        models: { type: array, maxItems: 0 }
+        balance: { type: object, maxProperties: 0 }
+        trial: { type: object, maxProperties: 0 }
+        retention: { type: object, maxProperties: 0 }
+    AgentModel:
+      type: object
+      required: [id, name, pricing]
+      properties:
+        id: { type: string, pattern: '^[a-z0-9][a-z0-9_-]{0,79}$' }
+        name: { type: string, minLength: 1, maxLength: 80 }
+        context_window: { type: integer, minimum: 1 }
+        pricing:
+          type: object
+          additionalProperties: false
+          required: [input, cached_input, output]
+          properties:
+            input: { type: number, minimum: 0 }
+            cached_input: { type: number, minimum: 0 }
+            output: { type: number, minimum: 0 }
     Identity:
       oneOf:
         - { $ref: '#/components/schemas/SignedOut' }

@@ -1,8 +1,8 @@
 {
   "id": "identity",
   "name": "Möbius · You",
-  "version": "0.3.4",
-  "description": "Your Möbius account, profile and active deployments.",
+  "version": "0.4.0",
+  "description": "Your Möbius account, model access, profile and deployments.",
   "author": "mobius-os",
   "license": "MIT",
   "homepage": "https://github.com/mobius-os/app-mobius-you",

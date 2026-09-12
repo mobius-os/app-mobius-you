@@ -20,9 +20,11 @@ import {
 import {
   IdentityRequestError,
   accountStatus,
+  agentAccessPresentation,
   deploymentNeedsTracking,
   deploymentPresentation,
   parseDeletionDiagnosis,
+  parseAgentAccess,
   parseIdentity,
   parseLinkAttempt,
   parseRailway,
@@ -50,12 +52,18 @@ async function identityRequest(token, path = '', options = {}) {
   if (response.status === 204) return null
   const body = await response.json().catch(() => ({}))
   if (!response.ok) {
+    const detail = body.detail
+    const message = typeof detail === 'string'
+      ? detail
+      : detail?.message || 'Identity is unavailable right now.'
     throw new IdentityRequestError(
-      body.detail || 'Identity is unavailable right now.',
+      message,
       response.status,
+      typeof detail?.code === 'string' ? detail.code : '',
     )
   }
   if (path === '/link/start') return parseLinkAttempt(body)
+  if (path === '/agent' || path === '/agent/trial') return parseAgentAccess(body)
   if (path === '/railway') return parseRailway(body)
   if (/^\/railway\/deployments\/[^/]+\/deletion$/.test(path)) {
     return parseDeletionDiagnosis(body)
@@ -1942,10 +1950,114 @@ function IdentityLoading({ appId }) {
   )
 }
 
+function usdFromUnits(units) {
+  if (!Number.isFinite(units)) return '—'
+  return new Intl.NumberFormat(undefined, {
+    style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2,
+  }).format(units / 1_000_000)
+}
+
+function modelPrice(value) {
+  return new Intl.NumberFormat(undefined, {
+    style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 4,
+  }).format(value)
+}
+
+function AgentAccessCard({ access, loading, error, activating, onActivate }) {
+  if (loading && !access) {
+    return (
+      <section className="id-card id-agent-card" aria-busy="true">
+        <div className="id-agent-heading"><span className="id-skeleton id-agent-skeleton" /></div>
+      </section>
+    )
+  }
+  if (!access || access.agent_access !== 'available') {
+    const signedOut = access?.agent_access === 'signed_out'
+    return (
+      <section className="id-card id-agent-card" role="status">
+        <div className="id-agent-heading">
+          <h2>{signedOut ? 'Sign in for model access' : 'Model access is temporarily unavailable'}</h2>
+        </div>
+        <div className="id-agent-body">
+          <p className="id-agent-muted">
+            {signedOut
+              ? 'Link your mobius.you account to see available models and activate a trial.'
+              : 'Your account is safe. Model access could not be checked just now.'}
+          </p>
+        </div>
+      </section>
+    )
+  }
+
+  const presentation = agentAccessPresentation(access)
+  return (
+    <section className="id-card id-agent-card" aria-labelledby="id-agent-title">
+      <div className="id-agent-heading">
+        <h2 id="id-agent-title">{presentation.title}</h2>
+        {presentation.showBalance && <span className="id-agent-balance">{usdFromUnits(access.balance.available_units)}</span>}
+      </div>
+
+      <div className="id-agent-body">
+        {presentation.empty && (
+          <div className="id-agent-alert" role="status">
+            Your model credit has run out. Ask your Möbius provider to add more.
+          </div>
+        )}
+
+        <div className="id-retention-notice" role="note">
+          <Lock width={17} height={17} aria-hidden="true" />
+          <span>{access.retention.notice}</span>
+        </div>
+
+        {presentation.needsActivation && (
+          <div className="id-agent-activate">
+            <button
+              type="button"
+              className="id-btn id-btn--primary"
+              disabled={activating}
+              onClick={onActivate}
+            >
+              {activating ? 'Activating…' : presentation.action}
+            </button>
+          </div>
+        )}
+        {error && <div className="id-agent-alert" role="alert">{error}</div>}
+      </div>
+
+      <details className="id-model-details">
+        <summary>
+          <span>Models and pricing</span>
+          <span className="id-model-summary-meta">{access.models.length} available</span>
+          <ChevronRight width={17} height={17} aria-hidden="true" />
+        </summary>
+        <div className="id-model-details-body">
+          <div className="id-model-list" aria-label="Available models and prices per million tokens">
+            {access.models.map(model => (
+              <div className="id-model-row" key={model.id}>
+                <strong>{model.name}</strong>
+                <span>
+                  {modelPrice(model.pricing.input)} in
+                  <i> · </i>{modelPrice(model.pricing.cached_input)} cached
+                  <i> · </i>{modelPrice(model.pricing.output)} out
+                </span>
+              </div>
+            ))}
+          </div>
+          <p className="id-model-unit">Prices are USD per 1 million tokens.</p>
+        </div>
+      </details>
+    </section>
+  )
+}
+
 export default function App({ appId, token }) {
   const [data, setData] = useState(null)
   const [railway, setRailway] = useState(null)
   const [railwayError, setRailwayError] = useState('')
+  const [agentAccess, setAgentAccess] = useState(null)
+  const [agentError, setAgentError] = useState('')
+  const [agentLoading, setAgentLoading] = useState(false)
+  const [activatingAgent, setActivatingAgent] = useState(false)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
   const [actionError, setActionError] = useState('')
@@ -1961,6 +2073,7 @@ export default function App({ appId, token }) {
   const fileRef = useRef(null)
   const loadSequenceRef = useRef(0)
   const railwaySequenceRef = useRef(0)
+  const agentSequenceRef = useRef(0)
   const railwayConnectAbortRef = useRef(null)
 
   const load = useCallback(async () => {
@@ -2006,6 +2119,36 @@ export default function App({ appId, token }) {
     return () => { railwaySequenceRef.current += 1 }
   }, [data?.account_mode, loadRailway])
 
+  const loadAgent = useCallback(async ({ quiet = false } = {}) => {
+    const sequence = ++agentSequenceRef.current
+    if (!quiet) {
+      setAgentLoading(true)
+      setAgentError('')
+    }
+    try {
+      const next = await identityRequest(token, '/agent')
+      if (agentSequenceRef.current === sequence) setAgentAccess(next)
+      return next
+    } catch (requestError) {
+      if (!quiet && agentSequenceRef.current === sequence) {
+        setAgentError(requestError.message)
+      }
+      return null
+    } finally {
+      if (!quiet && agentSequenceRef.current === sequence) setAgentLoading(false)
+    }
+  }, [token])
+
+  useEffect(() => {
+    if (data?.account_mode === 'linked' || data?.account_mode === 'managed') {
+      void loadAgent()
+    } else {
+      setAgentAccess(null)
+      setAgentError('')
+    }
+    return () => { agentSequenceRef.current += 1 }
+  }, [data?.account_mode, loadAgent])
+
   const trackingRailway = (railway?.instances || []).some(deploymentNeedsTracking)
   useEffect(() => {
     if (!trackingRailway) return undefined
@@ -2035,6 +2178,7 @@ export default function App({ appId, token }) {
       void load()
       if (accountMode === 'linked' || accountMode === 'managed') {
         void loadRailway({ quiet: true })
+        void loadAgent({ quiet: true })
       }
     }
     window.addEventListener('focus', refresh)
@@ -2043,7 +2187,7 @@ export default function App({ appId, token }) {
       window.removeEventListener('focus', refresh)
       document.removeEventListener('visibilitychange', refresh)
     }
-  }, [load, loadRailway, accountMode])
+  }, [load, loadRailway, loadAgent, accountMode])
 
   if (!data && loading) {
     return <IdentityLoading appId={appId} />
@@ -2115,6 +2259,21 @@ export default function App({ appId, token }) {
     const result = await identityRequest(token, `/railway${path}`, options)
     await loadRailway()
     return result
+  }
+
+  const activateAgent = async () => {
+    if (activatingAgent) return
+    setActivatingAgent(true)
+    setAgentError('')
+    try {
+      setAgentAccess(await identityRequest(token, '/agent/trial', { method: 'POST' }))
+    } catch (requestError) {
+      setAgentError(requestError.code === 'trial_fund_exhausted'
+        ? 'The shared trial fund is empty right now. Your account is ready; the Möbius owner can add more trial capacity.'
+        : requestError.message)
+    } finally {
+      setActivatingAgent(false)
+    }
   }
 
   const connectRailway = async (replace = false) => {
@@ -2327,6 +2486,14 @@ export default function App({ appId, token }) {
                   setReconnecting(true)
                   setDisconnecting(true)
                 }}
+              />
+
+              <AgentAccessCard
+                access={agentAccess}
+                loading={agentLoading}
+                error={agentError}
+                activating={activatingAgent}
+                onActivate={activateAgent}
               />
             </>
           )}
