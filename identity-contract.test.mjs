@@ -7,6 +7,7 @@ import {
   agentAccessPresentation,
   deploymentNeedsTracking,
   deploymentPresentation,
+  formatMembershipMonth,
   parseAgentAccess,
   parseIdentity,
   parseDeletionDiagnosis,
@@ -14,6 +15,11 @@ import {
   parseRailway,
   waitForAccountLink,
 } from './identity-contract.js'
+
+test('membership months do not shift across local time zones', () => {
+  assert.equal(formatMembershipMonth('2026-03-01', 'en-US'), 'Mar 2026')
+  assert.equal(formatMembershipMonth(null, 'en-US'), null)
+})
 
 test('model access accepts stable aliases and rejects hidden or malformed prices', () => {
   const value = {
@@ -556,6 +562,14 @@ test('the loaded account body remains inside the scroll container', async () => 
     source,
     /onUnlink=\{mode === 'linked'[\s\S]*?<div className="id-scroll">\s*<div className="id-shell">/,
   )
+})
+
+test('the membership date is not presented as a link date', async () => {
+  const source = await readFile(new URL('./index.jsx', import.meta.url), 'utf8')
+
+  assert.match(source, /const memberSince = formatMembershipMonth\(data\.member_since\)/)
+  assert.match(source, /Member since/)
+  assert.doesNotMatch(source, /Linked since|linkedSince/)
 })
 
 test('parseIdentity requires the current member_since date', () => {

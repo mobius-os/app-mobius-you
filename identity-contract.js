@@ -82,6 +82,15 @@ function calendarDate(value) {
     && parsed.getUTCDate() === day
 }
 
+export function formatMembershipMonth(value, locales) {
+  if (!calendarDate(value)) return null
+  return new Intl.DateTimeFormat(locales, {
+    month: 'short',
+    year: 'numeric',
+    timeZone: 'UTC',
+  }).format(new Date(`${value}T00:00:00Z`))
+}
+
 function validProfile(profile, degraded = false) {
   const fields = ['user_id', 'email', 'display_name', 'handle', 'avatar_url']
   if (!exactKeys(profile, fields)) return false
