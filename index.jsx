@@ -2225,8 +2225,9 @@ export default function App({ appId, token }) {
   const activeDeployments = data.deployments
     .filter(item => deploymentPresentation(item).tone === 'success')
     .length
-  const linkedSince = data.linked_at && Number.isFinite(Date.parse(data.linked_at))
-    ? new Date(data.linked_at).toLocaleDateString(undefined, { month: 'short', year: 'numeric' })
+  const sinceRaw = data.member_since
+  const linkedSince = sinceRaw && Number.isFinite(Date.parse(sinceRaw))
+    ? new Date(sinceRaw).toLocaleDateString(undefined, { month: 'short', year: 'numeric' })
     : null
 
   const saveHandle = async handle => {

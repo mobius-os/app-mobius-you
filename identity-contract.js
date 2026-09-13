@@ -73,6 +73,15 @@ function webUrl(value, { httpsOnly = false } = {}) {
   return null
 }
 
+function calendarDate(value) {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false
+  const [year, month, day] = value.split('-').map(Number)
+  const parsed = new Date(Date.UTC(year, month - 1, day))
+  return parsed.getUTCFullYear() === year
+    && parsed.getUTCMonth() === month - 1
+    && parsed.getUTCDate() === day
+}
+
 function validProfile(profile, degraded = false) {
   const fields = ['user_id', 'email', 'display_name', 'handle', 'avatar_url']
   if (!exactKeys(profile, fields)) return false
@@ -122,15 +131,11 @@ export function parseIdentity(value) {
     'profile',
     'deployments',
   ]
-  // linked_at is the platform's local record of when this Möbius was linked —
-  // optional so the app keeps working against a backend that predates it.
-  const validLinkedAt = value?.linked_at === undefined
-    || value?.linked_at === null
-    || (typeof value?.linked_at === 'string'
-      && Number.isFinite(Date.parse(value.linked_at)))
+  const validMemberSince = value?.member_since === null
+    || calendarDate(value?.member_since)
   if (
-    !exactKeys(value, fields, ['linked_at'])
-    || !validLinkedAt
+    !exactKeys(value, [...fields, 'member_since'])
+    || !validMemberSince
     || !ACCOUNT_MODES.includes(value.account_mode)
     || typeof value.account_unavailable !== 'boolean'
     || !Array.isArray(value.deployments)
