@@ -7,6 +7,7 @@ import {
   agentAccessPresentation,
   deploymentNeedsTracking,
   deploymentPresentation,
+  formatMembershipMonth,
   parseAgentAccess,
   parseIdentity,
   parseDeletionDiagnosis,
@@ -14,6 +15,11 @@ import {
   parseRailway,
   waitForAccountLink,
 } from './identity-contract.js'
+
+test('membership months do not shift across local time zones', () => {
+  assert.equal(formatMembershipMonth('2026-03-01', 'en-US'), 'Mar 2026')
+  assert.equal(formatMembershipMonth(null, 'en-US'), null)
+})
 
 test('model access accepts stable aliases and rejects hidden or malformed prices', () => {
   const value = {
@@ -108,6 +114,7 @@ const baseIdentity = {
   instance_id: null,
   profile: null,
   deployments: [localDeployment],
+  member_since: null,
 }
 
 const linkAttempt = {
@@ -557,7 +564,15 @@ test('the loaded account body remains inside the scroll container', async () => 
   )
 })
 
-test('parseIdentity accepts an optional linked_at instant', () => {
+test('the membership date is not presented as a link date', async () => {
+  const source = await readFile(new URL('./index.jsx', import.meta.url), 'utf8')
+
+  assert.match(source, /const memberSince = formatMembershipMonth\(data\.member_since\)/)
+  assert.match(source, /Member since/)
+  assert.doesNotMatch(source, /Linked since|linkedSince/)
+})
+
+test('parseIdentity requires the current member_since date', () => {
   const base = {
     account_mode: 'linked',
     account_unavailable: false,
@@ -574,12 +589,13 @@ test('parseIdentity accepts an optional linked_at instant', () => {
       url: 'https://example.com', current: true,
     }],
   }
-  assert.equal(parseIdentity({ ...base }).linked_at, undefined)
-  assert.equal(parseIdentity({ ...base, linked_at: null }).linked_at, null)
+  assert.equal(parseIdentity({ ...base, member_since: null }).member_since, null)
   assert.equal(
-    parseIdentity({ ...base, linked_at: '2026-08-23T17:00:00Z' }).linked_at,
-    '2026-08-23T17:00:00Z',
+    parseIdentity({ ...base, member_since: '2026-08-23' }).member_since,
+    '2026-08-23',
   )
-  assert.throws(() => parseIdentity({ ...base, linked_at: 'not-a-date' }))
-  assert.throws(() => parseIdentity({ ...base, linked_at: 12345 }))
+  assert.throws(() => parseIdentity({ ...base }))
+  assert.throws(() => parseIdentity({ ...base, linked_at: '2026-08-23T17:00:00Z' }))
+  assert.throws(() => parseIdentity({ ...base, member_since: 'not-a-date' }))
+  assert.throws(() => parseIdentity({ ...base, member_since: 12345 }))
 })

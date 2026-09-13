@@ -23,6 +23,7 @@ import {
   agentAccessPresentation,
   deploymentNeedsTracking,
   deploymentPresentation,
+  formatMembershipMonth,
   parseDeletionDiagnosis,
   parseAgentAccess,
   parseIdentity,
@@ -2225,9 +2226,7 @@ export default function App({ appId, token }) {
   const activeDeployments = data.deployments
     .filter(item => deploymentPresentation(item).tone === 'success')
     .length
-  const linkedSince = data.linked_at && Number.isFinite(Date.parse(data.linked_at))
-    ? new Date(data.linked_at).toLocaleDateString(undefined, { month: 'short', year: 'numeric' })
-    : null
+  const memberSince = formatMembershipMonth(data.member_since)
 
   const saveHandle = async handle => {
     setActionError('')
@@ -2396,10 +2395,10 @@ export default function App({ appId, token }) {
                 <IdentityCard
                   footer={(
                     <div className="id-cardfoot">
-                      {linkedSince && (
+                      {memberSince && (
                         <span className="id-cardkv">
-                          Linked since
-                          <b>{linkedSince}</b>
+                          Member since
+                          <b>{memberSince}</b>
                         </span>
                       )}
                       <span className="id-cardkv">
