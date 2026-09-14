@@ -91,16 +91,19 @@ export function formatMembershipMonth(value, locales) {
   }).format(new Date(`${value}T00:00:00Z`))
 }
 
-function validProfile(profile, degraded = false) {
+function validProfile(profile, { degraded = false, nullableEmail = false } = {}) {
   const fields = ['user_id', 'email', 'display_name', 'handle', 'avatar_url']
   if (!exactKeys(profile, fields)) return false
+  const validEmail = (nullableEmail && profile.email === null) || (
+    typeof profile.email === 'string'
+    && profile.email.length <= 320
+    && EMAIL.test(profile.email)
+  )
   if (
     typeof profile.user_id !== 'string'
     || profile.user_id.length < 1
     || profile.user_id.length > 128
-    || typeof profile.email !== 'string'
-    || profile.email.length > 320
-    || !EMAIL.test(profile.email)
+    || !validEmail
   ) return false
   if (degraded) {
     return profile.display_name === null
@@ -175,8 +178,8 @@ export function parseIdentity(value) {
   const validManaged = typeof value.instance_id === 'string'
     && value.instance_id.length > 0
     && (value.account_unavailable
-      ? validProfile(value.profile, true)
-      : validProfile(value.profile))
+      ? validProfile(value.profile, { degraded: true, nullableEmail: true })
+      : validProfile(value.profile, { nullableEmail: true }))
   if (!validManaged) {
     throw new Error('Möbius returned an invalid managed-account response.')
   }

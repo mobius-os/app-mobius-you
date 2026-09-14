@@ -256,7 +256,7 @@ components:
         account_mode: { const: managed }
         account_unavailable: { const: false }
         instance_id: { type: string, minLength: 1 }
-        profile: { $ref: '#/components/schemas/Profile' }
+        profile: { $ref: '#/components/schemas/ManagedProfile' }
         deployments:
           type: array
           minItems: 1
@@ -300,13 +300,23 @@ components:
         display_name: { type: string }
         handle: { anyOf: [{ type: string, pattern: '^[a-z0-9_]{3,30}$' }, { type: 'null' }] }
         avatar_url: { anyOf: [{ type: string, format: uri }, { type: 'null' }] }
+    ManagedProfile:
+      type: object
+      additionalProperties: false
+      required: [user_id, email, display_name, handle, avatar_url]
+      properties:
+        user_id: { type: string, minLength: 1 }
+        email: { anyOf: [{ type: string, format: email }, { type: 'null' }] }
+        display_name: { type: string }
+        handle: { anyOf: [{ type: string, pattern: '^[a-z0-9_]{3,30}$' }, { type: 'null' }] }
+        avatar_url: { anyOf: [{ type: string, format: uri }, { type: 'null' }] }
     DegradedManagedProfile:
       type: object
       additionalProperties: false
       required: [user_id, email, display_name, handle, avatar_url]
       properties:
         user_id: { type: string, minLength: 1 }
-        email: { type: string, format: email }
+        email: { anyOf: [{ type: string, format: email }, { type: 'null' }] }
         display_name: { type: 'null' }
         handle: { type: 'null' }
         avatar_url: { type: 'null' }

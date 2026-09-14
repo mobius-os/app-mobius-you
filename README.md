@@ -26,7 +26,7 @@ The app consumes only the v2 local bridge (`identity-bridge.openapi.yaml`):
 
 - `account_mode` is exactly `signed_out`, `linked`, or `managed`.
 - `account_unavailable` reports a temporary upstream failure without pretending the account is connected.
-- `profile` is `null` while signed out. A managed outage may retain only a locally bound user ID/email; a linked outage does not expose stale profile data.
+- `profile` is `null` while signed out. Email is nullable because managed enrollment can intentionally omit it. A managed outage may retain only the locally bound user ID and any available email; a linked outage does not expose stale profile data.
 - `deployments` always includes the local deployment.
 
 Self-hosted linking uses the deployed mobius.you protocol (`account-link.openapi.yaml`). The backend chooses `MOBIUS_ACCOUNT_ORIGIN` (default `https://www.mobius.you`) and binds the request, consent, code, grant, and popup message target to the exact HTTPS or loopback client origin. Codes and PKCE verifiers never enter URLs, logs, or browser storage. Avatar bytes are proxied through the authenticated `GET /api/identity/avatar` so the frame's restrictive same-origin image policy stays intact even when the account host moves to another machine.
