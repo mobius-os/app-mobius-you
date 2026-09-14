@@ -196,10 +196,22 @@ test('enforces available and degraded profile boundaries', () => {
   assert.doesNotThrow(() => parseIdentity({
     ...baseIdentity,
     account_mode: 'managed',
+    instance_id: 'mob_123',
+    profile: { ...profile, email: null },
+  }))
+  assert.throws(() => parseIdentity({
+    ...baseIdentity,
+    account_mode: 'linked',
+    profile: { ...profile, email: null },
+  }))
+  assert.doesNotThrow(() => parseIdentity({
+    ...baseIdentity,
+    account_mode: 'managed',
     account_unavailable: true,
     instance_id: 'mob_123',
     profile: {
       ...profile,
+      email: null,
       display_name: null,
       handle: null,
       avatar_url: null,
@@ -215,6 +227,12 @@ test('enforces available and degraded profile boundaries', () => {
     ...baseIdentity,
     account_mode: 'managed',
     instance_id: 'mob_123',
+  }))
+  assert.throws(() => parseIdentity({
+    ...baseIdentity,
+    account_mode: 'managed',
+    instance_id: 'mob_123',
+    profile: { ...profile, email: 'not-an-email' },
   }))
 })
 
