@@ -1718,6 +1718,35 @@ button { user-select: none; -webkit-user-select: none; }
   margin-top: 18px;
 }
 
+.id-manage-retry {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-top: 18px;
+  padding: 13px;
+  border: 1px solid color-mix(in srgb, #e5a13a 42%, var(--border, #333));
+  border-radius: 12px;
+  background: color-mix(in srgb, #e5a13a 12%, var(--surface2, #1e1e1e));
+}
+
+.id-manage-retry div { min-width: 0; }
+.id-manage-retry strong,
+.id-manage-retry span { display: block; }
+.id-manage-retry strong { font-size: 13px; }
+.id-manage-retry span {
+  margin-top: 4px;
+  color: var(--muted, #999);
+  font-size: 12px;
+  line-height: 1.4;
+}
+.id-manage-retry .id-btn { flex: none; }
+
+@media (max-width: 560px) {
+  .id-manage-retry { align-items: stretch; flex-direction: column; }
+  .id-manage-retry .id-btn { width: 100%; justify-content: center; }
+}
+
 .id-manage-disclosure {
   margin-top: 0;
 }

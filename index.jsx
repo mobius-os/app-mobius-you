@@ -1330,7 +1330,12 @@ function DeploymentMetrics({ token, instance, compact = false }) {
       } catch (requestError) {
         if (!requestController.signal.aborted && !cancelled) setError(requestError.message)
       } finally {
-        if (!cancelled) timer = setTimeout(refresh, 15000)
+        // Focus and visibility can both resume polling before the earlier
+        // request unwinds. Only the newest request owns the next pulse;
+        // otherwise every overlap leaves behind another repeating timer.
+        if (!cancelled && controller === requestController) {
+          timer = setTimeout(refresh, 15000)
+        }
       }
     }
     const resume = () => {
@@ -1593,7 +1598,7 @@ function DeletionRecoverySection({
 }
 
 function ManageDeploymentModal({
-  instance, onClose, onCompute, onStorage, planLimits, token,
+  instance, onClose, onCompute, onStorage, onRetry, planLimits, token,
 }) {
   // Selects use '' to mean "plan maximum"; if the deployment already sits at the
   // plan ceiling, start there rather than on a value the picker would not list.
@@ -1615,6 +1620,7 @@ function ManageDeploymentModal({
   const resourceSummary = instance.resources.volume_size_mb
     ? 'Change CPU or RAM, or increase storage'
     : 'Change CPU or RAM'
+  const canRetryDeployment = instance.status !== 'delete_failed' && instance.actions.retry
 
   const run = async (action, work) => {
     if (pending) return
@@ -1650,6 +1656,23 @@ function ManageDeploymentModal({
           </div>
           <span className="id-plan">{instance.resources.plan}</span>
         </div>
+
+        {canRetryDeployment && (
+          <div className="id-manage-retry">
+            <div>
+              <strong>Deployment needs attention</strong>
+              <span>{instance.last_error || 'Railway could not finish this deployment.'}</span>
+            </div>
+            <button
+              type="button"
+              className="id-btn id-btn--primary"
+              disabled={Boolean(pending)}
+              onClick={() => run('retry', () => onRetry(instance.id))}
+            >
+              {pending === 'retry' ? 'Retrying…' : 'Try deployment again'}
+            </button>
+          </div>
+        )}
 
         <div className="id-manage-settings">
           {instance.actions.edit_resources && (
@@ -2711,6 +2734,7 @@ export default function App({ appId, token }) {
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(payload),
             })}
+            onRetry={id => railwayAction(`/deployments/${id}/retry`, { method: 'POST' })}
           />
         )}
         {deletingDeployment && (
