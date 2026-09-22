@@ -462,6 +462,33 @@ test('keeps container replacement in Möbius Settings instead of deployment cont
   assert.match(source, /Container updates stay in the normal Settings flow/)
 })
 
+test('keeps rename beside the deployment name and management focused on resources and recovery', async () => {
+  const source = await readFile(new URL('./index.jsx', import.meta.url), 'utf8')
+  const manageStart = source.indexOf('function ManageDeploymentModal(')
+  const manageEnd = source.indexOf('function DeleteDeploymentModal(', manageStart)
+  const manageSource = source.slice(manageStart, manageEnd)
+
+  assert.match(source, /function DeploymentNameEditor\(/)
+  assert.match(source, /<Pencil width=\{14\}/)
+  assert.match(source, /onSave=\{name => onRename\(managed\.id, \{ name \}\)\}/)
+  assert.doesNotMatch(manageSource, /DeploymentMetrics|DeploymentNameEditor|Delete deployment/)
+  assert.match(manageSource, /Resources and recovery/)
+  assert.match(manageSource, /<ResourceFields/)
+  assert.match(manageSource, /<RecoverySection/)
+})
+
+test('refreshes visible deployment metrics without opening management', async () => {
+  const source = await readFile(new URL('./index.jsx', import.meta.url), 'utf8')
+  const metricsStart = source.indexOf('function DeploymentMetrics(')
+  const metricsEnd = source.indexOf('function RecoverySection(', metricsStart)
+  const metricsSource = source.slice(metricsStart, metricsEnd)
+
+  assert.match(metricsSource, /setTimeout\(refresh, 15000\)/)
+  assert.match(metricsSource, /visibilitychange/)
+  assert.match(metricsSource, /window\.addEventListener\('focus', resume\)/)
+  assert.match(source, /managed\?\.status === 'ready'[\s\S]*?<DeploymentMetrics token=\{token\} instance=\{managed\} compact/)
+})
+
 test('lists only deployments the account service already knows', async () => {
   const source = await readFile(new URL('./index.jsx', import.meta.url), 'utf8')
 

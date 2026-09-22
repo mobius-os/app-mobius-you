@@ -707,11 +707,14 @@ function DisconnectModal({ token, onClose, onDisconnected, reconnecting = false 
 }
 
 function Deployments({
+  token,
   items,
   railway,
   selfHosted,
   onNew,
   onManage,
+  onRename,
+  onDelete,
   onConnect,
   onReconnect,
   onManageConnection,
@@ -807,6 +810,7 @@ function Deployments({
         {deployments.map(item => {
           const managed = managedById.get(item.id)
             || managedByOrigin.get(deploymentOrigin(item.url))
+          const displayName = managed?.name || item.name
           const state = deploymentPresentation(managed || item)
           const StateIcon = state.tone === 'success'
             ? CheckCircle
@@ -817,60 +821,82 @@ function Deployments({
                 : null
           return (
           <div className={`id-deployment id-deployment--${state.tone}`} key={item.id}>
-            <div className="id-deploy-mark">
-              <img src="/moebius.png" alt="" />
-            </div>
-            <div className="id-deploy-copy">
-              <div className="id-deploy-name-row">
-                <div className="id-deploy-name">{item.name}</div>
-                {item.current && <span className="id-current-chip">You're here</span>}
+            <div className="id-deployment-main">
+              <div className="id-deploy-mark">
+                <img src="/moebius.png" alt="" />
               </div>
-              {(item.region || (item.current && selfHosted && !managed)) && (
-                <div className="id-deploy-meta">
-                  {item.region || ''}
-                  {item.region && item.current && selfHosted && !managed ? ' · ' : ''}
-                  {item.current && selfHosted && !managed ? 'Self-hosted' : ''}
+              <div className="id-deploy-copy">
+                <div className="id-deploy-name-row">
+                  <div className="id-deploy-name">{displayName}</div>
+                  {managed?.status === 'ready' && onRename && (
+                    <DeploymentNameEditor
+                      name={displayName}
+                      disabled={deploymentNeedsTracking(managed)}
+                      onSave={name => onRename(managed.id, { name })}
+                    />
+                  )}
+                  {item.current && <span className="id-current-chip">You're here</span>}
                 </div>
-              )}
-              {state.detail && state.detail !== state.label && (
-                <div className={`id-deploy-detail id-deploy-detail--${state.tone}`}>
-                  {state.detail}
-                </div>
-              )}
-            </div>
-            <div className="id-deploy-actions">
-              <span className={`id-status-pill id-status-pill--${state.tone}`}>
-                {StateIcon && (
-                  <StateIcon
-                    className={state.tone === 'progress' ? 'id-spin' : ''}
-                    width={13}
-                    aria-hidden="true"
-                  />
+                {(item.region || (item.current && selfHosted && !managed)) && (
+                  <div className="id-deploy-meta">
+                    {item.region || ''}
+                    {item.region && item.current && selfHosted && !managed ? ' · ' : ''}
+                    {item.current && selfHosted && !managed ? 'Self-hosted' : ''}
+                  </div>
                 )}
-                {state.label}
-              </span>
-              {managed && (
-                <button
-                  type="button"
-                  className={`id-deploy-manage${state.tone === 'danger' ? ' is-attention' : ''}`}
-                  aria-label={`${state.actionLabel} ${item.name}`}
-                  onClick={() => onManage(managed)}
-                >
-                  <span>{state.actionLabel}</span>
-                  <ChevronRight width={15} />
-                </button>
-              )}
-              {item.url && !item.current && (
-                <button
-                  type="button"
-                  className="id-open"
-                  aria-label={`Open ${item.name} in a new tab`}
-                  onClick={() => window.open(item.url, '_blank', 'noopener,noreferrer')}
-                >
-                  <ArrowUpRight width={18} />
-                </button>
-              )}
+                {state.detail && state.detail !== state.label && (
+                  <div className={`id-deploy-detail id-deploy-detail--${state.tone}`}>
+                    {state.detail}
+                  </div>
+                )}
+              </div>
+              <div className="id-deploy-actions">
+                <span className={`id-status-pill id-status-pill--${state.tone}`}>
+                  {StateIcon && (
+                    <StateIcon
+                      className={state.tone === 'progress' ? 'id-spin' : ''}
+                      width={13}
+                      aria-hidden="true"
+                    />
+                  )}
+                  {state.label}
+                </span>
+                {managed && (
+                  <button
+                    type="button"
+                    className={`id-deploy-manage${state.tone === 'danger' ? ' is-attention' : ''}`}
+                    aria-label={`${state.actionLabel} ${displayName}`}
+                    onClick={() => onManage(managed)}
+                  >
+                    <span>{state.actionLabel}</span>
+                    <ChevronRight width={15} />
+                  </button>
+                )}
+                {item.url && !item.current && (
+                  <button
+                    type="button"
+                    className="id-open"
+                    aria-label={`Open ${displayName} in a new tab`}
+                    onClick={() => window.open(item.url, '_blank', 'noopener,noreferrer')}
+                  >
+                    <ArrowUpRight width={18} />
+                  </button>
+                )}
+                {managed?.actions.delete && onDelete && (
+                  <button
+                    type="button"
+                    className="id-open id-delete-card"
+                    aria-label={`Delete ${displayName}`}
+                    onClick={() => onDelete(managed)}
+                  >
+                    <Trash width={17} />
+                  </button>
+                )}
+              </div>
             </div>
+            {managed?.status === 'ready' && (
+              <DeploymentMetrics token={token} instance={managed} compact />
+            )}
           </div>
           )
         })}
@@ -898,6 +924,82 @@ function Deployments({
         </div>
       )}
     </article>
+  )
+}
+
+function DeploymentNameEditor({ name, disabled, onSave }) {
+  const [editing, setEditing] = useState(false)
+  const [value, setValue] = useState(name)
+  const [pending, setPending] = useState(false)
+  const [error, setError] = useState('')
+  const inputRef = useRef(null)
+
+  useEffect(() => {
+    if (!editing) setValue(name)
+  }, [editing, name])
+
+  useEffect(() => {
+    if (editing) inputRef.current?.focus()
+  }, [editing])
+
+  const close = () => {
+    if (pending) return
+    setEditing(false)
+    setError('')
+    setValue(name)
+  }
+
+  const submit = async event => {
+    event.preventDefault()
+    const next = value.trim()
+    if (!next || next === name || pending) return
+    setPending(true)
+    setError('')
+    try {
+      await onSave(next)
+      setEditing(false)
+    } catch (requestError) {
+      setError(requestError.message)
+    } finally {
+      setPending(false)
+    }
+  }
+
+  return (
+    <div className={`id-name-editor${editing ? ' is-editing' : ''}`}>
+      <button
+        type="button"
+        className="id-name-edit"
+        aria-label={`Rename ${name}`}
+        aria-expanded={editing}
+        disabled={disabled}
+        onClick={() => setEditing(current => !current)}
+      >
+        <Pencil width={14} />
+      </button>
+      {editing && (
+        <form className="id-name-form" onSubmit={submit}>
+          <input
+            ref={inputRef}
+            className="id-input id-input--boxed"
+            value={value}
+            maxLength={80}
+            autoComplete="off"
+            spellCheck="false"
+            aria-label="Deployment name"
+            disabled={pending}
+            onChange={event => setValue(event.target.value)}
+          />
+          <div className="id-name-actions">
+            <button type="button" className="id-btn id-btn--quiet" disabled={pending} onClick={close}>Cancel</button>
+            <button type="submit" className="id-btn" disabled={pending || !value.trim() || value.trim() === name}>
+              {pending ? 'Saving…' : 'Save'}
+            </button>
+          </div>
+          {error && <div className="id-signin-error" role="alert">{error}</div>}
+        </form>
+      )}
+    </div>
   )
 }
 
@@ -1201,30 +1303,55 @@ function MetricMeter({ label, value, limit, percent }) {
   )
 }
 
-function DeploymentMetrics({ token, instance }) {
+function DeploymentMetrics({ token, instance, compact = false }) {
   const [metrics, setMetrics] = useState(null)
   const [error, setError] = useState('')
 
   useEffect(() => {
     if (instance.status !== 'ready') return undefined
-    const controller = new AbortController()
+    let controller
+    let timer
+    let cancelled = false
     setMetrics(null)
     setError('')
-    ;(async () => {
+    const refresh = async () => {
+      if (document.visibilityState !== 'visible') return
+      controller?.abort()
+      const requestController = new AbortController()
+      controller = requestController
       try {
         const data = await identityRequest(
-          token, `/railway/deployments/${instance.id}/metrics`, { signal: controller.signal },
+          token, `/railway/deployments/${instance.id}/metrics`, { signal: requestController.signal },
         )
-        if (!controller.signal.aborted) setMetrics(data)
+        if (!requestController.signal.aborted && !cancelled) {
+          setMetrics(data)
+          setError('')
+        }
       } catch (requestError) {
-        if (!controller.signal.aborted) setError(requestError.message)
+        if (!requestController.signal.aborted && !cancelled) setError(requestError.message)
+      } finally {
+        if (!cancelled) timer = setTimeout(refresh, 15000)
       }
-    })()
-    return () => controller.abort()
+    }
+    const resume = () => {
+      if (document.visibilityState !== 'visible') return
+      clearTimeout(timer)
+      void refresh()
+    }
+    void refresh()
+    window.addEventListener('focus', resume)
+    document.addEventListener('visibilitychange', resume)
+    return () => {
+      cancelled = true
+      clearTimeout(timer)
+      controller?.abort()
+      window.removeEventListener('focus', resume)
+      document.removeEventListener('visibilitychange', resume)
+    }
   }, [instance.id, instance.status, token])
 
   if (instance.status !== 'ready') return null
-  if (error) return <div className="id-metrics-note">Live metrics are unavailable right now.</div>
+  if (error && !metrics) return <div className="id-metrics-note">Live metrics are unavailable right now.</div>
   // Render the meter structure immediately so the manage view opens complete;
   // values fill in when the fetch returns rather than gating on a spinner.
   const runtime = metrics?.runtime || {}
@@ -1235,7 +1362,7 @@ function DeploymentMetrics({ token, instance }) {
     runtime.data_status,
   ].filter(Boolean)
   return (
-    <div className={`id-metrics${metrics ? '' : ' is-loading'}`}>
+    <div className={`id-metrics${compact ? ' id-metrics--card' : ''}${metrics ? '' : ' is-loading'}`}>
       {metrics
         ? runtimeBits.length > 0 && <div className="id-metrics-runtime">{runtimeBits.join(' · ')}</div>
         : (
@@ -1466,8 +1593,7 @@ function DeletionRecoverySection({
 }
 
 function ManageDeploymentModal({
-  instance, onClose, onCompute, onStorage, onRetry, onDelete,
-  onConfirmAbsent, planLimits, token,
+  instance, onClose, onCompute, onStorage, planLimits, token,
 }) {
   // Selects use '' to mean "plan maximum"; if the deployment already sits at the
   // plan ceiling, start there rather than on a value the picker would not list.
@@ -1484,19 +1610,11 @@ function ManageDeploymentModal({
   )
   const [pending, setPending] = useState('')
   const [error, setError] = useState('')
-  const [confirmDelete, setConfirmDelete] = useState(false)
   const closeRef = useRef(null)
   const dialogRef = useDialog(onClose, Boolean(pending), closeRef)
-  const state = deploymentPresentation(instance)
-  const retryingDelete = String(instance.status).toLowerCase() === 'delete_failed'
   const resourceSummary = instance.resources.volume_size_mb
     ? 'Change CPU or RAM, or increase storage'
     : 'Change CPU or RAM'
-  const StatusIcon = state.tone === 'danger'
-    ? Warning
-    : state.tone === 'progress'
-      ? ArrowRotateCw
-      : CheckCircle
 
   const run = async (action, work) => {
     if (pending) return
@@ -1528,55 +1646,9 @@ function ManageDeploymentModal({
         <div className="id-manage-head">
           <div>
             <h2 id="manage-deployment-title">{instance.name}</h2>
-            <p>{state.label}</p>
+            <p>Resources and recovery</p>
           </div>
           <span className="id-plan">{instance.resources.plan}</span>
-        </div>
-
-        <DeploymentMetrics token={token} instance={instance} />
-
-        {String(instance.status).toLowerCase() !== 'ready' && !retryingDelete && (
-          <div className={`id-operation-status id-operation-status--${state.tone}`} role="status">
-            <StatusIcon
-              className={state.tone === 'progress' ? 'id-spin' : ''}
-              width={19}
-              aria-hidden="true"
-            />
-            <div>
-              <strong>{state.label}</strong>
-              {state.detail && <span>{state.detail}</span>}
-            </div>
-          </div>
-        )}
-
-        {retryingDelete && (
-          <DeletionRecoverySection
-            token={token}
-            instance={instance}
-            pending={pending}
-            onConfirmAbsent={() => run(
-              'confirm-absent',
-              () => onConfirmAbsent(instance.id),
-            )}
-          />
-        )}
-
-        <div className="id-manage-links">
-          {instance.url && (
-            <button type="button" className="id-btn" onClick={() => window.open(instance.url, '_blank', 'noopener,noreferrer')}>
-              Open Möbius <ArrowUpRight width={16} />
-            </button>
-          )}
-          {instance.railway_url && !retryingDelete && (
-            <button type="button" className="id-btn" onClick={() => window.open(instance.railway_url, '_blank', 'noopener,noreferrer')}>
-              Open Railway <ArrowUpRight width={16} />
-            </button>
-          )}
-          {instance.actions.retry && !retryingDelete && (
-            <button type="button" className="id-btn" disabled={Boolean(pending)} onClick={() => run('retry', () => onRetry(instance.id))}>
-              {pending === 'retry' ? 'Retrying…' : 'Retry deployment'}
-            </button>
-          )}
         </div>
 
         <div className="id-manage-settings">
@@ -1697,39 +1769,103 @@ function ManageDeploymentModal({
 
         {error && <div className="id-signin-error" role="alert">{error}</div>}
 
-        {instance.actions.delete && (
-          confirmDelete ? (
-            <div className="id-delete-confirm">
-              <strong>{retryingDelete
-                ? 'Try removing this Railway project again?'
-                : 'Delete this Möbius and its Railway project?'}</strong>
-              <span>{retryingDelete
-                ? 'Möbius will ask Railway to permanently delete it again, then keep this page updated.'
-                : 'This permanently removes the deployment and cannot be undone.'}</span>
-              <div>
-                <button type="button" className="id-btn" disabled={Boolean(pending)} onClick={() => setConfirmDelete(false)}>
-                  Keep deployment
-                </button>
-                <button
-                  type="button"
-                  className="id-btn id-btn--danger"
-                  disabled={Boolean(pending)}
-                  onClick={() => run(
-                    retryingDelete ? 'retry-delete' : 'delete',
-                    () => retryingDelete ? onRetry(instance.id) : onDelete(instance.id),
-                  )}
-                >
-                  {pending
-                    ? 'Deleting…'
-                    : retryingDelete ? 'Try deleting again' : 'Delete permanently'}
-                </button>
-              </div>
+        <button ref={closeRef} type="button" className="id-btn id-modal-close" disabled={Boolean(pending)} onClick={onClose}>
+          Close
+        </button>
+      </section>
+    </div>
+  )
+}
+
+function DeleteDeploymentModal({
+  instance, token, onClose, onRetry, onDelete, onConfirmAbsent,
+}) {
+  const [pending, setPending] = useState('')
+  const [error, setError] = useState('')
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const closeRef = useRef(null)
+  const dialogRef = useDialog(onClose, Boolean(pending), closeRef)
+  const retryingDelete = String(instance.status).toLowerCase() === 'delete_failed'
+
+  const run = async (action, work) => {
+    if (pending) return
+    setPending(action)
+    setError('')
+    try {
+      await work()
+      onClose()
+    } catch (requestError) {
+      setError(requestError.message)
+    } finally {
+      setPending('')
+    }
+  }
+
+  return (
+    <div className="id-modal-backdrop" onMouseDown={event => {
+      if (!pending && event.target === event.currentTarget) onClose()
+    }}>
+      <section
+        ref={dialogRef}
+        className="id-modal id-manage-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="delete-deployment-title"
+        aria-busy={Boolean(pending)}
+        tabIndex={-1}
+      >
+        <div className="id-manage-head">
+          <div>
+            <h2 id="delete-deployment-title">Delete {instance.name}</h2>
+            <p>Permanent deployment removal</p>
+          </div>
+        </div>
+
+        {retryingDelete && (
+          <DeletionRecoverySection
+            token={token}
+            instance={instance}
+            pending={pending}
+            onConfirmAbsent={() => run(
+              'confirm-absent',
+              () => onConfirmAbsent(instance.id),
+            )}
+          />
+        )}
+
+        {error && <div className="id-signin-error" role="alert">{error}</div>}
+
+        {confirmDelete ? (
+          <div className="id-delete-confirm">
+            <strong>{retryingDelete
+              ? 'Try removing this Railway project again?'
+              : 'Delete this Möbius and its Railway project?'}</strong>
+            <span>{retryingDelete
+              ? 'Möbius will ask Railway to permanently delete it again, then keep this page updated.'
+              : 'This permanently removes the deployment and cannot be undone.'}</span>
+            <div>
+              <button type="button" className="id-btn" disabled={Boolean(pending)} onClick={() => setConfirmDelete(false)}>
+                Keep deployment
+              </button>
+              <button
+                type="button"
+                className="id-btn id-btn--danger"
+                disabled={Boolean(pending)}
+                onClick={() => run(
+                  retryingDelete ? 'retry-delete' : 'delete',
+                  () => retryingDelete ? onRetry(instance.id) : onDelete(instance.id),
+                )}
+              >
+                {pending
+                  ? 'Deleting…'
+                  : retryingDelete ? 'Try deleting again' : 'Delete permanently'}
+              </button>
             </div>
-          ) : (
-            <button type="button" className="id-btn id-btn--quiet id-delete-trigger" onClick={() => setConfirmDelete(true)}>
-              <Trash width={16} /> {retryingDelete ? 'Try deleting again' : 'Delete deployment'}
-            </button>
-          )
+          </div>
+        ) : (
+          <button type="button" className="id-btn id-btn--danger" onClick={() => setConfirmDelete(true)}>
+            <Trash width={16} /> {retryingDelete ? 'Try deleting again' : 'Delete deployment'}
+          </button>
         )}
 
         <button ref={closeRef} type="button" className="id-btn id-modal-close" disabled={Boolean(pending)} onClick={onClose}>
@@ -2068,6 +2204,7 @@ export default function App({ appId, token }) {
   const [reconnecting, setReconnecting] = useState(false)
   const [creatingDeployment, setCreatingDeployment] = useState(false)
   const [managingDeployment, setManagingDeployment] = useState(null)
+  const [deletingDeployment, setDeletingDeployment] = useState(null)
   const [managingRailway, setManagingRailway] = useState(false)
   const [connectingRailway, setConnectingRailway] = useState(false)
   const [uploading, setUploading] = useState(false)
@@ -2384,6 +2521,7 @@ export default function App({ appId, token }) {
                 </button>
               </section>
               <Deployments
+                token={token}
                 items={data.deployments}
                 railway={railway}
                 selfHosted={mode === 'linked'}
@@ -2473,11 +2611,18 @@ export default function App({ appId, token }) {
               </section>
 
               <Deployments
+                token={token}
                 items={data.deployments}
                 railway={railway}
                 selfHosted={mode === 'linked'}
                 onNew={() => setCreatingDeployment(true)}
                 onManage={setManagingDeployment}
+                onDelete={setDeletingDeployment}
+                onRename={(id, payload) => railwayAction(`/deployments/${id}`, {
+                  method: 'PATCH',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify(payload),
+                })}
                 onConnect={() => connectRailway()}
                 connecting={connectingRailway}
                 onManageConnection={() => setManagingRailway(true)}
@@ -2566,6 +2711,13 @@ export default function App({ appId, token }) {
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(payload),
             })}
+          />
+        )}
+        {deletingDeployment && (
+          <DeleteDeploymentModal
+            instance={deletingDeployment}
+            token={token}
+            onClose={() => setDeletingDeployment(null)}
             onRetry={id => railwayAction(`/deployments/${id}/retry`, { method: 'POST' })}
             onDelete={id => railwayAction(`/deployments/${id}`, { method: 'DELETE' })}
             onConfirmAbsent={id => railwayAction(`/deployments/${id}/confirm-absent`, {
