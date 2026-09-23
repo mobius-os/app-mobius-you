@@ -2210,6 +2210,77 @@ function AgentAccessCard({ access, loading, error, activating, onActivate }) {
   )
 }
 
+function ModelVisibilityCard({ token }) {
+  const [enabled, setEnabled] = useState(null)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  const load = useCallback(async () => {
+    setError('')
+    try {
+      const preference = await identityRequest(token, '/agent/models-enabled')
+      setEnabled(preference.enabled)
+    } catch (requestError) {
+      setError(requestError.message)
+    }
+  }, [token])
+
+  useEffect(() => { void load() }, [load])
+
+  const change = async next => {
+    setSaving(true)
+    setError('')
+    try {
+      const preference = await identityRequest(token, '/agent/models-enabled', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: next }),
+      })
+      setEnabled(preference.enabled)
+    } catch (requestError) {
+      setError(requestError.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <section className="id-card id-model-visibility-card" aria-labelledby="id-model-visibility-title">
+      <div className="id-agent-heading">
+        <h2 id="id-model-visibility-title">Möbius models</h2>
+        <span className="id-model-visibility-status">
+          {enabled === null ? 'Checking…' : enabled ? 'On' : 'Off'}
+        </span>
+      </div>
+      <div className="id-agent-body">
+        <label className="id-switch">
+          <input
+            className="id-switch-input"
+            type="checkbox"
+            checked={enabled === true}
+            disabled={enabled === null || saving}
+            onChange={event => { void change(event.target.checked) }}
+          />
+          <span className="id-switch-track" aria-hidden="true" />
+          <span className="id-switch-copy">
+            <strong>Show Möbius models in model pickers</strong>
+            <span>On by default. You can change this without signing in; using Möbius models still requires account access.</span>
+          </span>
+        </label>
+        {enabled === false && (
+          <p className="id-agent-muted">Existing Möbius chats remain saved, but cannot run until you turn this back on.</p>
+        )}
+        {error && (
+          <div className="id-model-visibility-error" role="alert">
+            <span>{error}</span>
+            {enabled === null && <button type="button" className="id-btn" onClick={load}>Try again</button>}
+          </div>
+        )}
+      </div>
+    </section>
+  )
+}
+
 export default function App({ appId, token }) {
   const [data, setData] = useState(null)
   const [railway, setRailway] = useState(null)
@@ -2664,6 +2735,8 @@ export default function App({ appId, token }) {
               />
             </>
           )}
+
+          <ModelVisibilityCard token={token} />
 
           {actionError && <div className="id-error" role="alert">{actionError}</div>}
           </div>

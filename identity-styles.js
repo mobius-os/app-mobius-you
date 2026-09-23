@@ -2004,6 +2004,26 @@ button { user-select: none; -webkit-user-select: none; }
   background: var(--surface, #171717);
 }
 
+.id-model-visibility-card {
+  margin-top: 18px;
+  background: var(--surface, #171717);
+}
+
+.id-model-visibility-status {
+  color: var(--muted, #999);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.id-model-visibility-error {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  color: var(--danger, #e77979);
+  font-size: 12px;
+}
+
 .id-agent-heading {
   display: flex;
   align-items: center;
