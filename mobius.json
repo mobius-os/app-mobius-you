@@ -10,6 +10,19 @@
   "icon": "icon.png",
   "offline_capable": false,
   "permissions": { "identity_manage": true, "railway_manage": true },
+  "model_provider": {
+    "name": "Möbius",
+    "transport": "identity_broker",
+    "base_url": "http://127.0.0.1:8765/v1",
+    "default_model": "inkling",
+    "models": [
+      { "id": "spark", "label": "Spark (Qwen3.8 27B)", "effort_levels": ["minimal", "low", "medium", "high", "max"], "context_window": 235930, "input_modalities": ["text", "image"] },
+      { "id": "inkling", "label": "Evolve", "effort_levels": ["minimal", "low", "medium", "high", "max"], "context_window": 900000, "input_modalities": ["text", "image"], "auto_compact_token_limit": 420000 },
+      { "id": "reflect", "label": "Reflect (DeepSeek V4.1 Flash)", "effort_levels": ["minimal", "low", "medium", "high", "max"], "context_window": 943718, "input_modalities": ["text", "image"], "auto_compact_token_limit": 420000 },
+      { "id": "flow", "label": "Flow (GLM 5.3 Flash)", "effort_levels": ["minimal", "low", "medium", "high", "max"], "context_window": 943718, "input_modalities": ["text", "image"], "auto_compact_token_limit": 420000 },
+      { "id": "prism", "label": "Prism (Gemini 3.8 Flash)", "effort_levels": ["minimal", "low", "medium", "high", "max"], "context_window": 943718, "input_modalities": ["text", "image"], "auto_compact_token_limit": 420000 }
+    ]
+  },
   "requires": ["identity_manage", "railway_manage"],
   "runtime": {
     "imports": ["react", "react-dom", "@openai/apps-sdk-ui/components/Icon"],

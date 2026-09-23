@@ -35,6 +35,13 @@ Self-hosted linking uses the deployed mobius.you protocol (`account-link.openapi
 
 Linked and managed accounts can see their current model credit, activate an available trial, and expand a provider-neutral catalogue of model aliases and token prices. The app reads `GET /api/identity/agent` and activates the trial through `POST /api/identity/agent/trial`; routing identifiers and provider credentials stay behind the local identity bridge.
 
+The installed manifest declares the Möbius Responses endpoint and model list.
+The platform's protected local broker still handles account authentication and
+inference, while the same app-model registry used by external connectors
+populates chat and background-agent model choices. The default-on visibility
+switch uses `GET/PATCH /api/auth/providers/mobius/enabled`; it does not require
+an account link, and disabling it does not delete existing chats.
+
 During the limited test, the account service supplies a fixed notice that conversations sent through Möbius models are stored privately for testing and improvement. This is an informational notice, not a consent control or activation gate. If the shared trial fund is empty, the activation action explains that the account is ready and that the Möbius owner can add more capacity.
 
 ## Railway management
