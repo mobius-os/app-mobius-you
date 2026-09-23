@@ -36,7 +36,7 @@ import { IDENTITY_STYLES } from './identity-styles.js'
 async function identityRequest(token, path = '', options = {}) {
   let response
   try {
-    response = await fetch(`/api/identity${path}`, {
+    response = await fetch(path.startsWith('/api/') ? path : `/api/identity${path}`, {
       ...options,
       headers: {
         Authorization: `Bearer ${token}`,
@@ -2218,7 +2218,7 @@ function ModelVisibilityCard({ token }) {
   const load = useCallback(async () => {
     setError('')
     try {
-      const preference = await identityRequest(token, '/agent/models-enabled')
+      const preference = await identityRequest(token, '/api/auth/providers/mobius/enabled')
       setEnabled(preference.enabled)
     } catch (requestError) {
       setError(requestError.message)
@@ -2231,7 +2231,7 @@ function ModelVisibilityCard({ token }) {
     setSaving(true)
     setError('')
     try {
-      const preference = await identityRequest(token, '/agent/models-enabled', {
+      const preference = await identityRequest(token, '/api/auth/providers/mobius/enabled', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ enabled: next }),
