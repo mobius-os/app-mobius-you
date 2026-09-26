@@ -5,6 +5,7 @@ import assert from 'node:assert/strict'
 import {
   accountStatus,
   agentAccessPresentation,
+  deploymentCanRecover,
   deploymentNeedsTracking,
   deploymentPresentation,
   formatMembershipMonth,
@@ -15,6 +16,24 @@ import {
   parseRailway,
   waitForAccountLink,
 } from './identity-contract.js'
+
+test('offers Recovery for running and failed deployments unless withheld', () => {
+  const deployment = (status, actions = {}) => ({ status, actions })
+  assert.equal(deploymentCanRecover(deployment('ready')), true)
+  assert.equal(deploymentCanRecover(deployment('error')), true)
+  assert.equal(deploymentCanRecover(deployment('error', { recover: true })), true)
+  assert.equal(deploymentCanRecover(deployment('ready', { recover: false })), false)
+  for (const status of ['provisioning', 'building', 'deleting', 'delete_failed', 'deleted']) {
+    assert.equal(deploymentCanRecover(deployment(status)), false, status)
+  }
+})
+
+test('the Recover action opens management on its Recovery section', async () => {
+  const source = await readFile(new URL('./index.jsx', import.meta.url), 'utf8')
+  assert.match(source, /onClick=\{\(\) => onManage\(managed, 'recovery'\)\}/)
+  assert.match(source, /open=\{section === 'recovery' \|\| undefined\}/)
+  assert.equal((source.match(/deploymentCanRecover\(/g) || []).length, 2)
+})
 
 test('membership months do not shift across local time zones', () => {
   assert.equal(formatMembershipMonth('2026-03-01', 'en-US'), 'Mar 2026')
@@ -514,7 +533,7 @@ test('lists only deployments the account service already knows', async () => {
   assert.doesNotMatch(source, /Hosted with Railway/)
   assert.match(source, /Railway workspace connected/)
   assert.match(source, /managedByOrigin\.get\(deploymentOrigin\(item\.url\)\)/)
-  assert.match(source, /instance\.actions\.recover !== false/)
+  assert.match(source, /deploymentCanRecover\(instance\)/)
 })
 
 test('wires deletion recovery through the reviewed server confirmation path', async () => {
