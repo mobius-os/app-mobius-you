@@ -419,6 +419,13 @@ export function deploymentNeedsTracking(instance) {
     || TRACKED_UPDATE_STATES.has(String(instance?.updates?.state || '').toLowerCase())
 }
 
+// Recovery repairs a running or failed deployment; the account service can
+// still withhold it with an explicit `actions.recover: false`.
+export function deploymentCanRecover(instance) {
+  return instance?.actions?.recover !== false
+    && ['ready', 'error'].includes(String(instance?.status || '').toLowerCase())
+}
+
 export function deploymentPresentation(instance) {
   const status = String(instance?.status || '').toLowerCase()
   const step = String(instance?.current_step || '').trim()

@@ -24,6 +24,7 @@ import {
   IdentityRequestError,
   accountStatus,
   agentAccessPresentation,
+  deploymentCanRecover,
   deploymentNeedsTracking,
   deploymentPresentation,
   formatMembershipMonth,
@@ -900,7 +901,7 @@ function Deployments({
                   <SettingsSlider width={14} aria-hidden="true" />
                   {state.actionLabel}
                 </button>
-                {managed.status === 'ready' && managed.actions.recover !== false && (
+                {deploymentCanRecover(managed) && (
                   <button
                     type="button"
                     className="id-btn"
@@ -1467,7 +1468,6 @@ function RecoverySection({ token, instance }) {
     }
   }
 
-  if (!['ready', 'error'].includes(instance.status)) return null
   const preparing = recovery?.state === 'starting'
   return (
     <div className="id-recovery">
@@ -1804,7 +1804,7 @@ function ManageDeploymentModal({
             </details>
           )}
 
-          {instance.actions.recover !== false && (
+          {deploymentCanRecover(instance) && (
             <details className="id-disclosure id-manage-disclosure" open={section === 'recovery' || undefined}>
               <summary>
                 <span className="id-disclosure-title">Recovery</span>
