@@ -783,27 +783,37 @@ button { user-select: none; -webkit-user-select: none; }
 
 .id-deploy-actions { justify-content: flex-end; }
 
-.id-deploy-manage {
-  min-height: 44px;
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  padding: 0 10px 0 12px;
-  border: 1px solid var(--border, #333);
-  border-radius: var(--id-control-radius);
-  background: var(--surface2, var(--surface, #171717));
-  color: var(--text, #f5f5f5);
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: border-color .15s ease, background .15s ease, transform .12s ease;
+.id-deployment { container-type: inline-size; }
+
+/* Labelled deployment actions, matching the mobius.you dashboard: one compact
+   row when the card fits four, two balanced rows when it does not. */
+.id-deploy-buttons {
+  display: flex;
+  gap: 6px;
+  margin-top: 12px;
 }
 
-.id-deploy-manage:not(:disabled):active { transform: scale(.97); }
+.id-deploy-buttons .id-btn {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 40px;
+  gap: 5px;
+  padding: 0 6px;
+  font-size: 12.5px;
+  white-space: nowrap;
+  box-shadow: none;
+}
 
-.id-deploy-manage.is-attention {
+.id-deploy-buttons .id-btn svg { flex: none; }
+
+.id-deploy-buttons .id-btn.is-attention {
   border-color: color-mix(in srgb, var(--danger, #d65a5a) 48%, var(--border, #333));
   color: var(--danger, #e67a7a);
+}
+
+@container (max-width: 335px) {
+  .id-deploy-buttons { flex-wrap: wrap; }
+  .id-deploy-buttons .id-btn { flex-basis: calc(50% - 3px); }
 }
 
 .id-label {
@@ -1369,12 +1379,6 @@ button { user-select: none; -webkit-user-select: none; }
 .id-railway-manage svg { color: var(--muted, #999); }
 .id-railway-manage:hover { color: var(--accent, #8b7cf6); }
 
-.id-delete-card:hover,
-.id-delete-card:focus-visible {
-  color: var(--danger, #d65a5a);
-  border-color: color-mix(in srgb, var(--danger, #d65a5a) 40%, var(--border, #333));
-}
-
 .id-metrics {
   display: flex;
   flex-direction: column;
@@ -1900,7 +1904,6 @@ button { user-select: none; -webkit-user-select: none; }
   }
 
   .id-btn:not(:disabled):hover { border-color: color-mix(in srgb, var(--accent, #8b7cf6) 45%, var(--border, #333)); }
-  .id-deploy-manage:not(:disabled):hover { border-color: color-mix(in srgb, var(--accent, #8b7cf6) 45%, var(--border, #333)); }
   .id-btn--primary:not(:disabled):hover {
     border-color: transparent;
     background: var(--accent-hover, var(--accent, #8b7cf6));

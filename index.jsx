@@ -10,9 +10,12 @@ import {
   Camera,
   CheckCircle,
   ChevronRight,
+  ExternalLink,
+  Lifesaver,
   Lock,
   Pencil,
   Plus,
+  SettingsSlider,
   Trash,
   Warning,
 } from '@openai/apps-sdk-ui/components/Icon'
@@ -861,18 +864,7 @@ function Deployments({
                   )}
                   {state.label}
                 </span>
-                {managed && (
-                  <button
-                    type="button"
-                    className={`id-deploy-manage${state.tone === 'danger' ? ' is-attention' : ''}`}
-                    aria-label={`${state.actionLabel} ${displayName}`}
-                    onClick={() => onManage(managed)}
-                  >
-                    <span>{state.actionLabel}</span>
-                    <ChevronRight width={15} />
-                  </button>
-                )}
-                {item.url && !item.current && (
+                {!managed && item.url && !item.current && (
                   <button
                     type="button"
                     className="id-open"
@@ -882,18 +874,56 @@ function Deployments({
                     <ArrowUpRight width={18} />
                   </button>
                 )}
-                {managed?.actions.delete && onDelete && (
+              </div>
+            </div>
+            {managed && (
+              // One labelled action row, matching the mobius.you dashboard:
+              // compact enough to share a phone-width row, never icon-only.
+              <div className="id-deploy-buttons">
+                {item.url && !item.current && (
                   <button
                     type="button"
-                    className="id-open id-delete-card"
+                    className="id-btn id-btn--primary"
+                    aria-label={`Open ${displayName} in a new tab`}
+                    onClick={() => window.open(item.url, '_blank', 'noopener,noreferrer')}
+                  >
+                    <ExternalLink width={14} aria-hidden="true" />
+                    Open
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className={`id-btn${state.tone === 'danger' ? ' is-attention' : ''}`}
+                  aria-label={`${state.actionLabel} ${displayName}`}
+                  onClick={() => onManage(managed)}
+                >
+                  <SettingsSlider width={14} aria-hidden="true" />
+                  {state.actionLabel}
+                </button>
+                {managed.status === 'ready' && managed.actions.recover !== false && (
+                  <button
+                    type="button"
+                    className="id-btn"
+                    aria-label={`Recover ${displayName}`}
+                    onClick={() => onManage(managed, 'recovery')}
+                  >
+                    <Lifesaver width={14} aria-hidden="true" />
+                    Recover
+                  </button>
+                )}
+                {managed.actions.delete && onDelete && (
+                  <button
+                    type="button"
+                    className="id-btn id-btn--danger"
                     aria-label={`Delete ${displayName}`}
                     onClick={() => onDelete(managed)}
                   >
-                    <Trash width={17} />
+                    <Trash width={14} aria-hidden="true" />
+                    Delete
                   </button>
                 )}
               </div>
-            </div>
+            )}
             {managed?.status === 'ready' && (
               <DeploymentMetrics token={token} instance={managed} compact />
             )}
@@ -1598,7 +1628,7 @@ function DeletionRecoverySection({
 }
 
 function ManageDeploymentModal({
-  instance, onClose, onCompute, onStorage, onRetry, planLimits, token,
+  instance, section, onClose, onCompute, onStorage, onRetry, planLimits, token,
 }) {
   // Selects use '' to mean "plan maximum"; if the deployment already sits at the
   // plan ceiling, start there rather than on a value the picker would not list.
@@ -1775,7 +1805,7 @@ function ManageDeploymentModal({
           )}
 
           {instance.actions.recover !== false && (
-            <details className="id-disclosure id-manage-disclosure">
+            <details className="id-disclosure id-manage-disclosure" open={section === 'recovery' || undefined}>
               <summary>
                 <span className="id-disclosure-title">Recovery</span>
                 <span className="id-disclosure-state">Open a temporary repair session</span>
@@ -2298,6 +2328,7 @@ export default function App({ appId, token }) {
   const [reconnecting, setReconnecting] = useState(false)
   const [creatingDeployment, setCreatingDeployment] = useState(false)
   const [managingDeployment, setManagingDeployment] = useState(null)
+  const [managingSection, setManagingSection] = useState(null)
   const [deletingDeployment, setDeletingDeployment] = useState(null)
   const [managingRailway, setManagingRailway] = useState(false)
   const [connectingRailway, setConnectingRailway] = useState(false)
@@ -2710,7 +2741,10 @@ export default function App({ appId, token }) {
                 railway={railway}
                 selfHosted={mode === 'linked'}
                 onNew={() => setCreatingDeployment(true)}
-                onManage={setManagingDeployment}
+                onManage={(instance, section = null) => {
+                  setManagingSection(section)
+                  setManagingDeployment(instance)
+                }}
                 onDelete={setDeletingDeployment}
                 onRename={(id, payload) => railwayAction(`/deployments/${id}`, {
                   method: 'PATCH',
@@ -2794,6 +2828,7 @@ export default function App({ appId, token }) {
         {managingDeployment && (
           <ManageDeploymentModal
             instance={managingDeployment}
+            section={managingSection}
             token={token}
             planLimits={railway?.connection?.plan_limits}
             onClose={() => setManagingDeployment(null)}
