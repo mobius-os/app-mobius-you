@@ -28,6 +28,27 @@ const TRACKED_DEPLOYMENT_STATUSES = new Set([
 ])
 const TRACKED_UPDATE_STATES = new Set(['pending', 'checking', 'retry'])
 export const IMAGE_UPDATE_POLICIES = Object.freeze(['automatic', 'manual'])
+export const RAILWAY_REGION_IDS = Object.freeze([
+  'us-west2', 'us-east4-eqdc4a', 'europe-west4-drams3a', 'asia-southeast1-eqsg3a',
+])
+
+// This is deliberately approximate, not browser geolocation. Unknown time
+// zones leave Railway's own preferred region in charge.
+export function suggestRailwayRegion(zone, offsetMinutes) {
+  if (typeof zone !== 'string' || !Number.isFinite(offsetMinutes)) return ''
+  if (zone.startsWith('America/')) {
+    return offsetMinutes <= -390 ? 'us-west2' : 'us-east4-eqdc4a'
+  }
+  if (/^(Europe|Africa|Atlantic)\//.test(zone)) return 'europe-west4-drams3a'
+  if (zone.startsWith('Asia/')) {
+    return offsetMinutes >= 300 ? 'asia-southeast1-eqsg3a' : 'europe-west4-drams3a'
+  }
+  if (/^(Australia|Indian)\//.test(zone)) return 'asia-southeast1-eqsg3a'
+  if (zone.startsWith('Pacific/')) {
+    return offsetMinutes < 0 ? 'us-west2' : 'asia-southeast1-eqsg3a'
+  }
+  return ''
+}
 
 const DELETE_CONFIRMATION_FALLBACK = (
   "Möbius couldn't confirm whether Railway removed this project. "
@@ -347,6 +368,17 @@ function validImageUpdatePolicies(value) {
     && value.every(policy => IMAGE_UPDATE_POLICIES.includes(policy))
 }
 
+function validRailwayRegions(value) {
+  return Array.isArray(value)
+    && value.length === RAILWAY_REGION_IDS.length
+    && new Set(value.map(item => item?.id)).size === value.length
+    && value.every(item => exactKeys(item, ['id', 'label'])
+      && RAILWAY_REGION_IDS.includes(item.id)
+      && typeof item.label === 'string'
+      && item.label.length > 0
+      && item.label.length <= 80)
+}
+
 export function parseRailway(value) {
   if (
     !exactKeys(value, ['railway_access', 'connection', 'instances'])
@@ -367,7 +399,7 @@ export function parseRailway(value) {
     if (
       !exactKeys(connection, [
         'connected', 'account', 'workspace', 'plan', 'deploy_blocked',
-      ], ['plan_limits', 'update_policies', 'adopt_current'])
+      ], ['plan_limits', 'update_policies', 'adopt_current', 'region_options'])
       || typeof connection.connected !== 'boolean'
       || typeof connection.account !== 'string'
       || connection.account.length > 320
@@ -389,12 +421,24 @@ export function parseRailway(value) {
       connection.update_policies !== undefined
       && !validImageUpdatePolicies(connection.update_policies)
     ) delete connection.update_policies
+    if (
+      connection.region_options !== undefined
+      && !validRailwayRegions(connection.region_options)
+    ) delete connection.region_options
     // Older account hosts advertised an importer for deployments created
     // outside Möbius. Retire that capability at this boundary so a staged
     // service rollout cannot revive its UI or blank the Railway panel.
     delete connection.adopt_current
   }
   return value
+}
+
+export function railwayAccountChanged(previousAccount, next) {
+  return Boolean(
+    next?.connection?.connected
+    && next.connection.account
+    && next.connection.account !== previousAccount
+  )
 }
 
 export function parseDeletionDiagnosis(value) {
@@ -424,6 +468,12 @@ export function deploymentNeedsTracking(instance) {
 export function deploymentCanRecover(instance) {
   return instance?.actions?.recover !== false
     && ['ready', 'error'].includes(String(instance?.status || '').toLowerCase())
+}
+
+export function deploymentIsBuilding(instance) {
+  return ['queued', 'creating', 'deploying'].includes(
+    String(instance?.status || '').toLowerCase(),
+  )
 }
 
 export function deploymentPresentation(instance) {
@@ -456,7 +506,7 @@ export function deploymentPresentation(instance) {
       actionLabel: 'Review',
     }
   }
-  if (status === 'queued' || status === 'creating' || status === 'deploying') {
+  if (deploymentIsBuilding(instance)) {
     return {
       label: 'Deploying',
       detail: step || 'Möbius is following the Railway build.',
