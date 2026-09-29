@@ -2098,22 +2098,30 @@ button { user-select: none; -webkit-user-select: none; }
 
   .id-dep-foot {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto auto;
-    gap: 8px;
-    align-items: center;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 6px 12px;
+    padding: 14px 16px 8px;
   }
-  .id-dep-foot .id-railway-conn-account { grid-column: 1 / -1; }
-  .id-dep-foot .id-railway-plan-link { justify-self: start; }
-  .id-railway-conn-account {
-    min-width: 0;
+  .id-dep-foot .id-railway-conn-account {
+    grid-area: 1 / 1;
+    line-height: 1.5;
     overflow: visible;
-    text-overflow: clip;
     white-space: normal;
     overflow-wrap: anywhere;
   }
-  .id-railway-plan { justify-self: start; }
-  .id-railway-manage { margin-left: 0; }
-
+  .id-dep-foot .id-railway-plan { grid-area: 1 / 2; justify-self: end; }
+  .id-dep-foot .id-railway-plan-link {
+    grid-area: 2 / 1;
+    justify-self: start;
+    min-height: 44px;
+    white-space: normal;
+  }
+  .id-dep-foot .id-railway-manage {
+    grid-area: 2 / 2;
+    justify-self: end;
+    margin: 0;
+    padding: 0;
+  }
   .id-loading-avatar { width: 72px; }
   .id-loading-title { height: 24px; }
 
@@ -2154,12 +2162,6 @@ button { user-select: none; -webkit-user-select: none; }
 
   .id-modal-actions { flex-direction: column-reverse; }
   .id-modal-actions .id-btn { width: 100%; }
-}
-
-@media (max-width: 350px) {
-  .id-dep-foot { grid-template-columns: auto minmax(0, 1fr); }
-  .id-dep-foot .id-railway-conn-account { grid-column: 1 / -1; }
-  .id-dep-foot .id-railway-manage { grid-column: 1 / -1; justify-self: start; }
 }
 
 .id-agent-card {
