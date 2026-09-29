@@ -1153,8 +1153,10 @@ function NewDeploymentModal({
 }) {
   const [name, setName] = useState('My Möbius')
   const [managedAuth, setManagedAuth] = useState(true)
-  const [cpu, setCpu] = useState('')
-  const [memory, setMemory] = useState('')
+  const [cpu, setCpu] = useState(() => planLimits
+    ? String(planLimits.default_cpu ?? Math.min(2, planLimits.max_cpu)) : '')
+  const [memory, setMemory] = useState(() => planLimits
+    ? String(planLimits.default_memory_mb ?? Math.min(4096, planLimits.max_memory_mb)) : '')
   const [volume, setVolume] = useState(planLimits ? String(planLimits.default_volume_mb) : '')
   const [region, setRegion] = useState(() => {
     const zone = Intl.DateTimeFormat().resolvedOptions().timeZone || ''
