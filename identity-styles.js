@@ -757,6 +757,7 @@ button { user-select: none; -webkit-user-select: none; }
 /* Hosting details are a footnote, not a headline. */
 .id-dep-foot {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   min-height: 44px;
@@ -766,6 +767,17 @@ button { user-select: none; -webkit-user-select: none; }
   color: var(--muted, #999);
   font-size: 12px;
 }
+
+.id-railway-plan-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  min-height: 40px;
+  color: var(--accent, #8b7cf6);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.id-railway-plan-link:hover { text-decoration: underline; text-underline-offset: 3px; }
 
 .id-live-chip {
   display: inline-flex;
@@ -785,16 +797,15 @@ button { user-select: none; -webkit-user-select: none; }
 
 .id-deployment { container-type: inline-size; }
 
-/* Labelled deployment actions, matching the mobius.you dashboard: one compact
-   row when the card fits four, two balanced rows when it does not. */
+/* Labelled deployment actions reflow inside the card, not the viewport. */
 .id-deploy-buttons {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
   gap: 6px;
   margin-top: 12px;
 }
 
 .id-deploy-buttons .id-btn {
-  flex: 1 1 0;
   min-width: 0;
   min-height: 40px;
   gap: 5px;
@@ -805,15 +816,19 @@ button { user-select: none; -webkit-user-select: none; }
 }
 
 .id-deploy-buttons .id-btn svg { flex: none; }
+.id-deploy-buttons a.id-btn { text-decoration: none; }
+
+.id-deploy-buttons--building { display: flex; flex-wrap: wrap; }
+.id-deploy-buttons--building .id-btn { flex: 0 1 auto; padding-inline: 14px; }
 
 .id-deploy-buttons .id-btn.is-attention {
   border-color: color-mix(in srgb, var(--danger, #d65a5a) 48%, var(--border, #333));
   color: var(--danger, #e67a7a);
 }
 
-@container (max-width: 335px) {
-  .id-deploy-buttons { flex-wrap: wrap; }
-  .id-deploy-buttons .id-btn { flex-basis: calc(50% - 3px); }
+@container (max-width: 430px) {
+  .id-deploy-buttons { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .id-deploy-buttons .id-btn:last-child:nth-child(odd) { grid-column: 1 / -1; }
 }
 
 .id-label {
@@ -1155,6 +1170,13 @@ button { user-select: none; -webkit-user-select: none; }
 
 .id-manage-modal { width: min(620px, 100%); }
 
+.id-manage-panel {
+  min-width: 0;
+  margin-top: 18px;
+  padding: 0 2px 4px;
+  border-top: 1px solid var(--border-light, var(--border, #2a2a2a));
+}
+
 .id-manage-head {
   display: flex;
   align-items: flex-start;
@@ -1167,6 +1189,79 @@ button { user-select: none; -webkit-user-select: none; }
   margin: 5px 0 0;
   color: var(--muted, #999);
   font-size: 13px;
+}
+
+.id-connection-modal { width: min(480px, 100%); }
+
+.id-connection-head { align-items: flex-start; margin-bottom: 18px; }
+
+.id-connection-head p { overflow-wrap: anywhere; }
+
+.id-connection-close {
+  flex: none;
+  padding-inline: 8px;
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted, #999);
+}
+
+.id-connection-facts {
+  border-top: 1px solid var(--border, #333);
+  border-bottom: 1px solid var(--border, #333);
+}
+
+.id-connection-fact {
+  display: grid;
+  grid-template-columns: 82px minmax(0, 1fr);
+  align-items: center;
+  gap: 0 14px;
+  padding: 11px 0;
+}
+
+.id-connection-fact .id-label { align-self: start; padding-top: 2px; }
+
+.id-connection-value {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--text, #f5f5f5);
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.id-connection-plan-actions { grid-column: 2; }
+
+.id-connection-plan-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+}
+
+.id-connection-plan-actions .id-btn {
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font-size: 12px;
+  text-decoration: none;
+}
+
+.id-connection-plan-link { color: var(--accent, #8b7cf6); }
+.id-connection-refresh { color: var(--muted, #999); }
+
+.id-connection-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-top: 18px;
+}
+
+.id-connection-disconnect {
+  width: auto;
+  margin-top: 0;
+  padding-inline: 14px;
 }
 
 .id-operation-status {
@@ -1340,6 +1435,35 @@ button { user-select: none; -webkit-user-select: none; }
 }
 
 .id-storage-row .id-btn { white-space: nowrap; }
+
+.id-manage-storage {
+  display: grid;
+  gap: 12px;
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid var(--border, #333);
+}
+
+.id-manage-storage-intro strong,
+.id-manage-storage-intro span { display: block; }
+.id-manage-storage-intro strong { font-size: 13px; font-weight: 600; }
+.id-manage-storage-intro span { margin-top: 3px; color: var(--muted, #999); font-size: 12px; line-height: 1.45; }
+.id-storage-limit-note { margin: 0; color: var(--muted, #999); font-size: 12px; line-height: 1.45; }
+
+.id-storage-confirm {
+  padding: 14px;
+  border: 1px solid var(--border, #333);
+  border-radius: 12px;
+  background: var(--surface-2, #1e1e1e);
+}
+.id-storage-confirm strong { display: block; font-size: 13px; }
+.id-storage-confirm p { margin: 5px 0 14px; color: var(--muted, #999); font-size: 12px; line-height: 1.45; }
+.id-storage-confirm-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+
+@media (max-width: 560px) {
+  .id-storage-confirm-actions { display: grid; }
+  .id-storage-confirm-actions .id-btn { width: 100%; }
+}
 
 .id-railway-conn-account {
   min-width: 0;
@@ -1593,6 +1717,14 @@ button { user-select: none; -webkit-user-select: none; }
   border-top: 1px solid var(--border-light, var(--border, #2a2a2a));
 }
 
+.id-region-group {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border-light, var(--border, #2a2a2a));
+}
+
 .id-switch {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
@@ -1718,8 +1850,8 @@ button { user-select: none; -webkit-user-select: none; }
 .id-manage-settings {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  margin-top: 18px;
+  gap: 0;
+  margin-top: 0;
 }
 
 .id-manage-retry {
@@ -1753,11 +1885,19 @@ button { user-select: none; -webkit-user-select: none; }
 
 .id-manage-disclosure {
   margin-top: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
 }
 
 .id-manage-disclosure > summary {
   display: grid;
   grid-template-columns: minmax(0, auto) minmax(0, 1fr) auto;
+  padding: 15px 2px;
+}
+
+.id-manage-disclosure .id-disclosure-body {
+  padding: 17px 2px 3px;
 }
 
 .id-manage-disclosure .id-disclosure-state {
@@ -1766,6 +1906,11 @@ button { user-select: none; -webkit-user-select: none; }
   text-overflow: ellipsis;
   white-space: nowrap;
   text-align: right;
+}
+
+@media (max-width: 560px) {
+  .id-manage-disclosure > summary { grid-template-columns: minmax(0, 1fr) auto; }
+  .id-manage-disclosure .id-disclosure-state { display: none; }
 }
 
 .id-manage-recovery .id-recovery-btn {
@@ -1957,6 +2102,8 @@ button { user-select: none; -webkit-user-select: none; }
     gap: 8px;
     align-items: center;
   }
+  .id-dep-foot .id-railway-conn-account { grid-column: 1 / -1; }
+  .id-dep-foot .id-railway-plan-link { justify-self: start; }
   .id-railway-conn-account {
     min-width: 0;
     overflow: visible;
@@ -1978,6 +2125,9 @@ button { user-select: none; -webkit-user-select: none; }
   .id-railway-callout .id-btn { width: 100%; }
 
   .id-resource-fields { grid-template-columns: 1fr; }
+  .id-composer-modal .id-disclosure-state { display: none; }
+  .id-composer-modal .id-disclosure-title { white-space: nowrap; }
+  .id-composer-modal .id-disclosure-caret { margin-left: auto; }
   .id-meters { grid-template-columns: 1fr; }
   .id-metrics--card .id-meters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .id-rename-row { grid-template-columns: 1fr; align-items: stretch; }
@@ -1985,6 +2135,10 @@ button { user-select: none; -webkit-user-select: none; }
   .id-storage-row { grid-template-columns: 1fr; align-items: stretch; }
   .id-storage-row .id-btn { width: 100%; }
   .id-manage-links { display: grid; grid-template-columns: 1fr; }
+  .id-connection-fact { grid-template-columns: 78px minmax(0, 1fr); }
+  .id-connection-plan-actions { grid-column: 1 / -1; margin-top: 2px; }
+  .id-connection-footer { display: grid; grid-template-columns: minmax(0, 1fr) auto; }
+  .id-connection-footer > .id-btn:first-child { min-width: 0; white-space: normal; font-size: 12px; }
   .id-deletion-recovery-actions { display: grid; grid-template-columns: 1fr; }
   .id-absence-confirm > div { display: grid; grid-template-columns: 1fr; }
   .id-delete-confirm > div { align-items: stretch; flex-direction: column; }
@@ -2000,6 +2154,12 @@ button { user-select: none; -webkit-user-select: none; }
 
   .id-modal-actions { flex-direction: column-reverse; }
   .id-modal-actions .id-btn { width: 100%; }
+}
+
+@media (max-width: 350px) {
+  .id-dep-foot { grid-template-columns: auto minmax(0, 1fr); }
+  .id-dep-foot .id-railway-conn-account { grid-column: 1 / -1; }
+  .id-dep-foot .id-railway-manage { grid-column: 1 / -1; justify-self: start; }
 }
 
 .id-agent-card {

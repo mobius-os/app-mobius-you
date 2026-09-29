@@ -6,6 +6,7 @@ import {
   accountStatus,
   agentAccessPresentation,
   deploymentCanRecover,
+  deploymentIsBuilding,
   deploymentNeedsTracking,
   deploymentPresentation,
   formatMembershipMonth,
@@ -14,6 +15,8 @@ import {
   parseDeletionDiagnosis,
   parseLinkAttempt,
   parseRailway,
+  railwayAccountChanged,
+  suggestRailwayRegion,
   waitForAccountLink,
 } from './identity-contract.js'
 
@@ -28,11 +31,28 @@ test('offers Recovery for running and failed deployments unless withheld', () =>
   }
 })
 
-test('the Recover action opens management on its Recovery section', async () => {
+test('the Recover action reveals only its Recovery section', async () => {
   const source = await readFile(new URL('./index.jsx', import.meta.url), 'utf8')
   assert.match(source, /onClick=\{\(\) => onManage\(managed, 'recovery'\)\}/)
   assert.match(source, /open=\{section === 'recovery' \|\| undefined\}/)
   assert.equal((source.match(/deploymentCanRecover\(/g) || []).length, 2)
+})
+
+test('building deployments offer a distinct cancellation path, not a live-app link', async () => {
+  for (const status of ['queued', 'creating', 'deploying']) {
+    assert.equal(deploymentIsBuilding({ status }), true, status)
+  }
+  for (const status of ['ready', 'error', 'deleting', 'deleted']) {
+    assert.equal(deploymentIsBuilding({ status }), false, status)
+  }
+  const source = await readFile(new URL('./index.jsx', import.meta.url), 'utf8')
+  assert.match(source, /item\.url && !item\.current && !building/)
+  assert.doesNotMatch(source, /onManage\(managed, 'resources'\)/)
+  assert.match(source, /building \? 'Cancel deployment' : 'Delete'/)
+  assert.match(source, /cancellingBuild \? 'Keep building' : 'Keep deployment'/)
+  assert.match(source, /If Railway has created a project and storage volume, they will be removed/)
+  assert.match(source, /cancellingBuild \? 'Cancel and remove' : 'Delete permanently'/)
+  assert.match(source, /onDelete=\{id => railwayAction\(`\/deployments\/\$\{id\}`, \{ method: 'DELETE' \}\)\}/)
 })
 
 test('membership months do not shift across local time zones', () => {
@@ -375,6 +395,48 @@ test('accepts an optional plan_limits block and rejects a malformed one', () => 
   }))
 })
 
+test('suggests a nearby single region from time zone and gates region controls', () => {
+  assert.equal(suggestRailwayRegion('Europe/London', 60), 'europe-west4-drams3a')
+  assert.equal(suggestRailwayRegion('America/Los_Angeles', -420), 'us-west2')
+  assert.equal(suggestRailwayRegion('America/Chicago', -360), 'us-east4-eqdc4a')
+  assert.equal(suggestRailwayRegion('Asia/Singapore', 480), 'asia-southeast1-eqsg3a')
+  assert.equal(suggestRailwayRegion('Etc/UTC', 0), '')
+  const base = {
+    railway_access: 'available',
+    connection: {
+      connected: true, account: 'owner@example.com', workspace: 'Personal',
+      plan: 'hobby', deploy_blocked: '',
+    },
+    instances: [],
+  }
+  assert.equal(parseRailway(base).connection.region_options, undefined)
+  const regions = [
+    ['us-west2', 'US West'], ['us-east4-eqdc4a', 'US East'],
+    ['europe-west4-drams3a', 'Europe'], ['asia-southeast1-eqsg3a', 'Asia Pacific'],
+  ].map(([id, label]) => ({ id, label }))
+  const advertised = parseRailway({
+    ...base, connection: { ...base.connection, region_options: regions },
+  })
+  assert.deepEqual(advertised.connection.region_options, regions)
+  const malformed = parseRailway({
+    ...base, connection: { ...base.connection, region_options: [{ id: 'unknown', label: 'No' }] },
+  })
+  assert.equal(malformed.connection.region_options, undefined)
+})
+
+test('opts into region choices through the platform inventory bridge', async () => {
+  const source = await readFile(new URL('./index.jsx', import.meta.url), 'utf8')
+  assert.match(source, /identityRequest\(token, '\/railway\?region_options=1'\)/)
+})
+
+test('shows advertised region choice without plan limits and reloads workspaces after account replacement', async () => {
+  const source = await readFile(new URL('./index.jsx', import.meta.url), 'utf8')
+  assert.match(source, /\(planLimits \|\| regionOptions\?\.length > 0\)/)
+  assert.match(source, /if \(next\) await reloadWorkspaces\(\)/)
+  assert.match(source, /const sequence = \+\+workspaceSequenceRef\.current/)
+  assert.match(source, /return next\s*\n\s*}\s*\n\s*if \(popup\.closed\)/)
+})
+
 test('accepts advertised image-update controls without requiring them from older hosts', () => {
   const base = {
     railway_access: 'available',
@@ -481,21 +543,36 @@ test('keeps container replacement in Möbius Settings instead of deployment cont
   assert.match(source, /Container updates stay in the normal Settings flow/)
 })
 
-test('keeps rename beside the deployment name and management focused on recovery actions', async () => {
+test('keeps Resources below each eligible deployment without a redundant Manage action', async () => {
   const source = await readFile(new URL('./index.jsx', import.meta.url), 'utf8')
-  const manageStart = source.indexOf('function ManageDeploymentModal(')
+  const manageStart = source.indexOf('function ManageDeploymentPanel(')
   const manageEnd = source.indexOf('function DeleteDeploymentModal(', manageStart)
   const manageSource = source.slice(manageStart, manageEnd)
 
   assert.match(source, /function DeploymentNameEditor\(/)
   assert.match(source, /<Pencil width=\{14\}/)
   assert.match(source, /onSave=\{name => onRename\(managed\.id, \{ name \}\)\}/)
+  assert.match(source, /managed && \(managed\.actions\.edit_resources/)
+  assert.doesNotMatch(source, /onManage\(managed, 'resources'\)/)
+  assert.doesNotMatch(source, /\{state\.actionLabel\}/)
+  assert.match(source, /managed\.railway_url && \(/)
+  assert.match(source, /<Lifesaver width=\{14\}/)
+  assert.match(source, /<Trash width=\{14\}/)
+  assert.doesNotMatch(manageSource, /id-modal-backdrop|role="dialog"/)
   assert.doesNotMatch(manageSource, /DeploymentMetrics|DeploymentNameEditor|Delete deployment/)
-  assert.match(manageSource, /Resources and recovery/)
+  assert.match(manageSource, /<span className="id-disclosure-title">Resources<\/span>/)
+  assert.match(manageSource, /section === 'recovery' && deploymentCanRecover\(instance\)/)
   assert.match(manageSource, /<ResourceFields/)
   assert.match(manageSource, /<RecoverySection/)
   assert.match(manageSource, /instance\.status !== 'delete_failed' && instance\.actions\.retry/)
   assert.match(manageSource, /onRetry\(instance\.id\)/)
+  assert.match(manageSource, /Review increase/)
+  assert.match(manageSource, /Update compute/)
+  assert.match(manageSource, /Attached storage can only be increased, not reduced\./)
+  assert.match(manageSource, /volume_options_mb\.find\(value => value > current\)/)
+  assert.match(manageSource, /setConfirmVolume\(Number\(volume\)\)/)
+  assert.match(manageSource, /This volume can only grow\. You won’t be able to reduce it later\./)
+  assert.match(manageSource, /onStorage\(instance\.id, \{ volume_mb: confirmVolume \}\)/)
   assert.match(source, /onRetry=\{id => railwayAction\(`\/deployments\/\$\{id\}\/retry`/)
 })
 
@@ -534,6 +611,21 @@ test('lists only deployments the account service already knows', async () => {
   assert.match(source, /Railway workspace connected/)
   assert.match(source, /managedByOrigin\.get\(deploymentOrigin\(item\.url\)\)/)
   assert.match(source, /deploymentCanRecover\(instance\)/)
+})
+
+test('changing Railway account waits for a different connected account', async () => {
+  const source = await readFile(new URL('./index.jsx', import.meta.url), 'utf8')
+  assert.match(source, /Railway account<\/h2>/)
+  assert.match(source, /Manage plan on Railway/)
+  assert.match(source, /Change hosting account/)
+  const previous = 'first@example.com'
+  assert.equal(railwayAccountChanged(previous, null), false)
+  assert.equal(railwayAccountChanged(previous, { connection: { connected: false, account: 'second@example.com' } }), false)
+  assert.equal(railwayAccountChanged(previous, { connection: { connected: true, account: previous } }), false)
+  assert.equal(railwayAccountChanged(previous, { connection: { connected: true, account: 'second@example.com' } }), true)
+  assert.match(source, /replace \? railwayAccountChanged\(previousAccount, next\) : next\?\.connection\?\.connected/)
+  assert.match(source, /href="https:\/\/railway\.com\/workspace\/plans"/)
+  assert.doesNotMatch(source, /onClick=\{\(\) => \{ onClose\(\); onChangeAccount\(\) \}\}/)
 })
 
 test('wires deletion recovery through the reviewed server confirmation path', async () => {
