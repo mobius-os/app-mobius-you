@@ -1196,6 +1196,14 @@ function NewDeploymentModal({
   const storageLabel = planLimits
     ? fmtVolume(Number(volume) || planLimits.default_volume_mb)
     : ''
+  const regionLabel = regionOptions?.length
+    ? (regionOptions.find(option => option.id === region)?.label || 'Railway preferred region')
+    : ''
+  const advancedSummary = [
+    storageLabel || (planLimits ? 'Default resources' : ''),
+    regionLabel,
+    managedAuth ? 'Möbius sign-in on' : 'Local sign-in',
+  ].filter(Boolean).join(' · ')
   const summary = []
   if (included) {
     summary.push(<span key="inc"><b>{included}</b> included{planName ? ` on ${planName}` : ''}</span>)
@@ -1250,13 +1258,12 @@ function NewDeploymentModal({
           <p className="id-launch-summary">{summaryRow}</p>
         )}
 
-        {planLimits ? (
+        {(planLimits || regionOptions?.length > 0) ? (
           <details className="id-disclosure">
             <summary>
               <span className="id-disclosure-title">Advanced settings</span>
               <span className="id-disclosure-state">
-                {storageLabel || 'Default resources'}
-                {` · ${managedAuth ? 'Möbius sign-in on' : 'Local sign-in'}`}
+                {advancedSummary}
               </span>
               <span className="id-disclosure-caret" aria-hidden="true">
                 <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="m9 6 6 6-6 6" /></svg>
@@ -1990,6 +1997,7 @@ function RailwayConnectionModal({
   connecting, connectionError,
 }) {
   const [inventory, setInventory] = useState(null)
+  const workspaceSequenceRef = useRef(0)
   const [pending, setPending] = useState('')
   const [error, setError] = useState('')
   const [confirmDisconnect, setConfirmDisconnect] = useState(false)
@@ -1997,16 +2005,23 @@ function RailwayConnectionModal({
   const busy = Boolean(pending) || connecting
   const dialogRef = useDialog(onClose, busy, closeRef)
 
-  useEffect(() => {
-    const controller = new AbortController()
-    ;(async () => {
-      try {
-        const data = await identityRequest(token, '/railway/workspaces', { signal: controller.signal })
-        setInventory(data)
-      } catch { if (!controller.signal.aborted) setInventory({ workspaces: [], current: null }) }
-    })()
-    return () => controller.abort()
+  const reloadWorkspaces = useCallback(async () => {
+    const sequence = ++workspaceSequenceRef.current
+    setInventory(null)
+    try {
+      const data = await identityRequest(token, '/railway/workspaces')
+      if (workspaceSequenceRef.current === sequence) setInventory(data)
+    } catch {
+      if (workspaceSequenceRef.current === sequence) {
+        setInventory({ workspaces: [], current: null })
+      }
+    }
   }, [token])
+
+  useEffect(() => {
+    void reloadWorkspaces()
+    return () => { workspaceSequenceRef.current += 1 }
+  }, [reloadWorkspaces])
 
   const run = async (action, work) => {
     if (pending) return
@@ -2134,7 +2149,10 @@ function RailwayConnectionModal({
           </div>
         ) : (
           <div className="id-connection-footer">
-            <button type="button" className="id-btn" disabled={busy} onClick={onChangeAccount}>
+            <button type="button" className="id-btn" disabled={busy} onClick={() => run('change', async () => {
+              const next = await onChangeAccount()
+              if (next) await reloadWorkspaces()
+            })}>
               {connecting ? 'Connecting…' : 'Change hosting account'}
             </button>
             <button type="button" className="id-btn id-btn--quiet id-connection-disconnect" disabled={busy} aria-label="Disconnect Railway" onClick={() => setConfirmDisconnect(true)}>
@@ -2411,7 +2429,7 @@ export default function App({ appId, token }) {
     const sequence = ++railwaySequenceRef.current
     if (!quiet) setRailwayError('')
     try {
-      const next = await identityRequest(token, '/railway')
+      const next = await identityRequest(token, '/railway?region_options=1')
       if (railwaySequenceRef.current === sequence) setRailway(next)
       return next
     } catch (requestError) {
@@ -2619,7 +2637,7 @@ export default function App({ appId, token }) {
         const next = await loadRailway({ quiet: true })
         if (replace ? railwayAccountChanged(previousAccount, next) : next?.connection?.connected) {
           try { popup.close() } catch { /* already closed */ }
-          return
+          return next
         }
         if (popup.closed) {
           if (replace && next?.connection?.connected) {

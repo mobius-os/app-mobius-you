@@ -424,6 +424,19 @@ test('suggests a nearby single region from time zone and gates region controls',
   assert.equal(malformed.connection.region_options, undefined)
 })
 
+test('opts into region choices through the platform inventory bridge', async () => {
+  const source = await readFile(new URL('./index.jsx', import.meta.url), 'utf8')
+  assert.match(source, /identityRequest\(token, '\/railway\?region_options=1'\)/)
+})
+
+test('shows advertised region choice without plan limits and reloads workspaces after account replacement', async () => {
+  const source = await readFile(new URL('./index.jsx', import.meta.url), 'utf8')
+  assert.match(source, /\(planLimits \|\| regionOptions\?\.length > 0\)/)
+  assert.match(source, /if \(next\) await reloadWorkspaces\(\)/)
+  assert.match(source, /const sequence = \+\+workspaceSequenceRef\.current/)
+  assert.match(source, /return next\s*\n\s*}\s*\n\s*if \(popup\.closed\)/)
+})
+
 test('accepts advertised image-update controls without requiring them from older hosts', () => {
   const base = {
     railway_access: 'available',
