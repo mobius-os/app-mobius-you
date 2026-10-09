@@ -718,6 +718,7 @@ function Deployments({
   token,
   items,
   railway,
+  workspacePlans,
   selfHosted,
   onNew,
   onManage,
@@ -735,6 +736,13 @@ function Deployments({
   connecting,
 }) {
   const managedById = new Map((railway?.instances || []).map(item => [item.id, item]))
+  // A deployment is limited by the plan of the workspace it lives in; the
+  // connection's saved workspace is only the fallback (older hosts, or a
+  // deployment whose workspace is not recorded yet).
+  const limitsFor = instance => (
+    workspacePlans?.workspaces.find(item => item.id === instance.workspace_id)?.plan_limits
+    ?? railway?.connection?.plan_limits
+  )
   const deploymentOrigin = value => {
     try {
       const parsed = new URL(value)
@@ -950,7 +958,7 @@ function Deployments({
                 instance={managed}
                 section={managingDeployment?.id === managed.id ? managingSection : null}
                 token={token}
-                planLimits={railway?.connection?.plan_limits}
+                planLimits={limitsFor(managed)}
                 onClose={onCloseManage}
                 onCompute={onCompute}
                 onStorage={onStorage}
@@ -2480,7 +2488,7 @@ export default function App({ appId, token }) {
       // polling keeps the plans it has: they cost the launcher a Railway lookup
       // and creating re-checks the plan live anyway.
       const [next, plans] = await Promise.all([
-        identityRequest(token, '/railway?region_options=1'),
+        identityRequest(token, '/railway?region_options=1&workspace_ids=1'),
         quiet ? null : identityRequest(token, '/railway/workspace-plans').catch(() => null),
       ])
       if (railwaySequenceRef.current === sequence) {
@@ -2867,6 +2875,7 @@ export default function App({ appId, token }) {
                 token={token}
                 items={data.deployments}
                 railway={railway}
+                workspacePlans={workspacePlans}
                 selfHosted={mode === 'linked'}
                 onNew={() => setCreatingDeployment(true)}
                 managingDeployment={managingDeployment}

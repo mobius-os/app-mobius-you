@@ -290,11 +290,15 @@ function nullableString(value, max) {
   return value === null || (typeof value === 'string' && value.length <= max)
 }
 
+function nullableWorkspaceId(value) {
+  return value === null || (typeof value === 'string' && value.length > 0 && value.length <= 128)
+}
+
 function validRailwayInstance(instance) {
   if (!exactKeys(instance, [
     'id', 'name', 'status', 'url', 'railway_url', 'current_step',
     'last_error', 'resources', 'actions',
-  ], ['updates'])) return false
+  ], ['updates', 'workspace_id'])) return false
   if (
     typeof instance.id !== 'string'
     || !/^mob_[A-Za-z0-9_-]{3,80}$/.test(instance.id)
@@ -419,6 +423,14 @@ export function parseRailway(value) {
     || value.instances.length > 100
     || !value.instances.every(validRailwayInstance)
   ) throw new Error('Möbius returned invalid Railway deployment state.')
+  // The workspace a deployment is in is an advertised extension (requested with
+  // ?workspace_ids=1). A malformed value only costs that deployment its
+  // workspace-specific limits; it never blanks the deployments panel.
+  for (const instance of value.instances) {
+    if (instance.workspace_id !== undefined && !nullableWorkspaceId(instance.workspace_id)) {
+      delete instance.workspace_id
+    }
+  }
 
   if (value.railway_access !== 'available') {
     if (value.connection !== null || value.instances.length) {

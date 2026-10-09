@@ -135,6 +135,23 @@ paths:
         '502': { description: Revocation unconfirmed; the local link is retained. }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/IdentityCapabilityRequired' }
+  /api/identity/railway:
+    get:
+      operationId: readRailway
+      description: >-
+        Reads the Railway connection and deployments. Opt-in extensions are
+        requested with query flags and ignored by hosts that predate them:
+        region_options=1 adds the connection's region choices, and
+        workspace_ids=1 adds each deployment's workspace_id (null until the host
+        has recorded it) so the resource editor can use that workspace's plan
+        limits. Without the flags the response keeps its original shape.
+      security: [{ appBearer: [] }]
+      parameters:
+        - { name: region_options, in: query, required: false, schema: { type: string, enum: ['1'] } }
+        - { name: workspace_ids, in: query, required: false, schema: { type: string, enum: ['1'] } }
+      responses:
+        '200': { description: The Railway connection and deployments. }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
   /api/identity/railway/workspace-plans:
     get:
       operationId: readRailwayWorkspacePlans

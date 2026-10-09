@@ -482,9 +482,35 @@ test('the create form owns the workspace only when workspace plans are advertise
   assert.doesNotMatch(source, /!name\.trim\(\) \|\| blocked/)
 })
 
+test('a deployment may name its workspace, and a malformed value only loses that', () => {
+  const base = {
+    id: 'mob_abc', name: 'A', status: 'ready', url: null, railway_url: null,
+    current_step: null, last_error: null,
+    resources: { cpu: null, memory_mb: null, volume_size_mb: null, plan: 'pro' },
+    actions: { edit_resources: true, retry: false, delete: true },
+  }
+  const parse = instance => parseRailway({
+    railway_access: 'available', connection: null, instances: [instance],
+  }).instances[0]
+  assert.equal(parse({ ...base, workspace_id: 'ws_team' }).workspace_id, 'ws_team')
+  assert.equal(parse({ ...base, workspace_id: null }).workspace_id, null)
+  assert.equal('workspace_id' in parse(base), false)
+  for (const bad of [7, '', 'x'.repeat(129), {}]) {
+    assert.equal('workspace_id' in parse({ ...base, workspace_id: bad }), false)
+  }
+  assert.throws(() => parse({ ...base, other: 1 }))
+})
+
+test('resource limits follow the deployment\'s own workspace with the connection as fallback', async () => {
+  const source = await readFile(new URL('./index.jsx', import.meta.url), 'utf8')
+  assert.match(source, /find\(item => item\.id === instance\.workspace_id\)\?\.plan_limits/)
+  assert.match(source, /\?\? railway\?\.connection\?\.plan_limits/)
+  assert.match(source, /planLimits=\{limitsFor\(managed\)\}/)
+})
+
 test('opts into region choices through the platform inventory bridge', async () => {
   const source = await readFile(new URL('./index.jsx', import.meta.url), 'utf8')
-  assert.match(source, /identityRequest\(token, '\/railway\?region_options=1'\)/)
+  assert.match(source, /identityRequest\(token, '\/railway\?region_options=1&workspace_ids=1'\)/)
 })
 
 test('shows advertised region choice without plan limits and reloads workspaces after account replacement', async () => {
