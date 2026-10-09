@@ -33,6 +33,7 @@ import {
   parseIdentity,
   parseLinkAttempt,
   parseRailway,
+  parseWorkspacePlans,
   railwayAccountChanged,
   suggestRailwayRegion,
   waitForAccountLink,
@@ -72,6 +73,7 @@ async function identityRequest(token, path = '', options = {}) {
   if (path === '/link/start') return parseLinkAttempt(body)
   if (path === '/agent' || path === '/agent/trial') return parseAgentAccess(body)
   if (path === '/railway') return parseRailway(body)
+  if (path === '/railway/workspace-plans') return parseWorkspacePlans(body)
   if (/^\/railway\/deployments\/[^/]+\/deletion$/.test(path)) {
     return parseDeletionDiagnosis(body)
   }
@@ -1145,19 +1147,37 @@ function WandIcon(props) {
   )
 }
 
+function resourceDefaults(limits) {
+  return {
+    cpu: limits ? String(limits.default_cpu ?? Math.min(2, limits.max_cpu)) : '',
+    memory: limits ? String(limits.default_memory_mb ?? Math.min(4096, limits.max_memory_mb)) : '',
+    volume: limits ? String(limits.default_volume_mb) : '',
+  }
+}
+
 // Mirrors the mobius.you deploy composer: name + a live "included / storage"
 // launch summary, resources, and access tucked behind Advanced settings, plus
 // a Deploy Möbius action. Container updates stay in the normal Settings flow.
 function NewDeploymentModal({
-  onClose, onCreate, planLimits, plan, regionOptions,
+  onClose, onCreate, planLimits: connectionLimits, plan: connectionPlan, workspacePlans,
+  regionOptions,
 }) {
   const [name, setName] = useState('My Möbius')
   const [managedAuth, setManagedAuth] = useState(true)
-  const [cpu, setCpu] = useState(() => planLimits
-    ? String(planLimits.default_cpu ?? Math.min(2, planLimits.max_cpu)) : '')
-  const [memory, setMemory] = useState(() => planLimits
-    ? String(planLimits.default_memory_mb ?? Math.min(4096, planLimits.max_memory_mb)) : '')
-  const [volume, setVolume] = useState(planLimits ? String(planLimits.default_volume_mb) : '')
+  // With workspacePlans the form owns the workspace choice; limits, plan and
+  // blocked notice then come from the selected workspace, not the connection.
+  const [workspaceId, setWorkspaceId] = useState(() => {
+    if (!workspacePlans) return ''
+    const { workspaces, current } = workspacePlans
+    return workspaces.some(item => item.id === current) ? current : workspaces[0].id
+  })
+  const workspace = workspacePlans?.workspaces.find(item => item.id === workspaceId)
+  const planLimits = workspace ? workspace.plan_limits : connectionLimits
+  const plan = workspace ? workspace.plan : connectionPlan
+  const blocked = workspace?.deploy_blocked || ''
+  const [cpu, setCpu] = useState(() => resourceDefaults(planLimits).cpu)
+  const [memory, setMemory] = useState(() => resourceDefaults(planLimits).memory)
+  const [volume, setVolume] = useState(() => resourceDefaults(planLimits).volume)
   const [region, setRegion] = useState(() => {
     const zone = Intl.DateTimeFormat().resolvedOptions().timeZone || ''
     const suggestion = suggestRailwayRegion(zone, -new Date().getTimezoneOffset())
@@ -1170,7 +1190,7 @@ function NewDeploymentModal({
 
   const submit = async event => {
     event.preventDefault()
-    if (!name.trim() || pending) return
+    if (!name.trim() || blocked || pending) return
     setPending(true)
     setError('')
     try {
@@ -1182,6 +1202,7 @@ function NewDeploymentModal({
         volume_mb: volume ? Number(volume) : null,
       }
       if (regionOptions?.length && region) settings.region = region
+      if (workspace) settings.workspace_id = workspace.id
       await onCreate(settings)
       onClose()
     } catch (requestError) {
@@ -1189,6 +1210,14 @@ function NewDeploymentModal({
     } finally {
       setPending(false)
     }
+  }
+
+  const chooseWorkspace = id => {
+    const defaults = resourceDefaults(workspacePlans.workspaces.find(item => item.id === id).plan_limits)
+    setWorkspaceId(id)
+    setCpu(defaults.cpu)
+    setMemory(defaults.memory)
+    setVolume(defaults.volume)
   }
 
   const planName = planTitle(plan)
@@ -1255,6 +1284,17 @@ function NewDeploymentModal({
             </span>
           )}
         </div>
+
+        {workspacePlans?.workspaces.length > 1 && (
+          <label className="id-field-block">
+            <span className="id-label">Railway workspace</span>
+            <select className="id-select" value={workspaceId} disabled={pending} onChange={event => chooseWorkspace(event.target.value)}>
+              {workspacePlans.workspaces.map(item => (
+                <option key={item.id} value={item.id}>{item.name}</option>
+              ))}
+            </select>
+          </label>
+        )}
 
         {summaryRow.length > 0 && (
           <p className="id-launch-summary">{summaryRow}</p>
@@ -1335,6 +1375,7 @@ function NewDeploymentModal({
           </label>
         )}
 
+        {blocked && <div className="id-manage-error">{blocked}</div>}
         {error && <div className="id-signin-error" role="alert">{error}</div>}
 
         <div className="id-composer-foot">
@@ -1345,7 +1386,7 @@ function NewDeploymentModal({
             <button type="button" className="id-btn" disabled={pending} onClick={onClose}>
               Cancel
             </button>
-            <button type="submit" className="id-btn id-btn--primary id-deploy-btn" disabled={!name.trim() || pending}>
+            <button type="submit" className="id-btn id-btn--primary id-deploy-btn" disabled={!name.trim() || Boolean(blocked) || pending}>
               {pending ? 'Deploying…' : <><WandIcon width={16} /> Deploy Möbius</>}
             </button>
           </div>
@@ -1995,8 +2036,8 @@ function DeleteDeploymentModal({
 }
 
 function RailwayConnectionModal({
-  token, connection, onClose, onReload, onChangeAccount, onDisconnected,
-  connecting, connectionError,
+  token, connection, workspaceChosenOnCreate, onClose, onReload, onChangeAccount,
+  onDisconnected, connecting, connectionError,
 }) {
   const [inventory, setInventory] = useState(null)
   const workspaceSequenceRef = useRef(0)
@@ -2068,10 +2109,10 @@ function RailwayConnectionModal({
           {/* Render the workspace field from the first paint using the name the
              connection already carries, so it never pops in after the inventory
              fetch. It upgrades to an interactive picker only if more than one
-             workspace is authorized. */}
+             workspace is authorized and new deployments do not choose their own. */}
           <div className="id-connection-fact">
             <span className="id-label">Workspace</span>
-            {workspaces.length > 1 ? (
+            {workspaces.length > 1 && !workspaceChosenOnCreate ? (
               <select
                 className="id-select"
                 value={currentWorkspace}
@@ -2383,6 +2424,7 @@ function ModelVisibilityCard({ token }) {
 export default function App({ appId, token }) {
   const [data, setData] = useState(null)
   const [railway, setRailway] = useState(null)
+  const [workspacePlans, setWorkspacePlans] = useState(null)
   const [railwayError, setRailwayError] = useState('')
   const [agentAccess, setAgentAccess] = useState(null)
   const [agentError, setAgentError] = useState('')
@@ -2431,8 +2473,18 @@ export default function App({ appId, token }) {
     const sequence = ++railwaySequenceRef.current
     if (!quiet) setRailwayError('')
     try {
-      const next = await identityRequest(token, '/railway?region_options=1')
-      if (railwaySequenceRef.current === sequence) setRailway(next)
+      // Older platforms and launchers lack the workspace-plans route; any
+      // failure of it keeps the legacy connection-wide workspace flow. Quiet
+      // polling keeps the plans it has: they cost the launcher a Railway lookup
+      // and creating re-checks the plan live anyway.
+      const [next, plans] = await Promise.all([
+        identityRequest(token, '/railway?region_options=1'),
+        quiet ? null : identityRequest(token, '/railway/workspace-plans').catch(() => null),
+      ])
+      if (railwaySequenceRef.current === sequence) {
+        setRailway(next)
+        if (!quiet) setWorkspacePlans(plans?.workspaces.length ? plans : null)
+      }
       return next
     } catch (requestError) {
       if (!quiet && railwaySequenceRef.current === sequence) {
@@ -2447,6 +2499,7 @@ export default function App({ appId, token }) {
       void loadRailway()
     } else {
       setRailway(null)
+      setWorkspacePlans(null)
     }
     return () => { railwaySequenceRef.current += 1 }
   }, [data?.account_mode, loadRailway])
@@ -2908,6 +2961,7 @@ export default function App({ appId, token }) {
           <NewDeploymentModal
             planLimits={railway?.connection?.plan_limits}
             plan={railway?.connection?.plan}
+            workspacePlans={workspacePlans}
             regionOptions={railway?.connection?.region_options}
             onClose={() => setCreatingDeployment(false)}
             onCreate={payload => railwayAction('/deployments', {
@@ -2935,6 +2989,7 @@ export default function App({ appId, token }) {
           <RailwayConnectionModal
             token={token}
             connection={railway.connection}
+            workspaceChosenOnCreate={Boolean(workspacePlans)}
             onClose={() => setManagingRailway(false)}
             onReload={loadRailway}
             onChangeAccount={() => connectRailway(true)}

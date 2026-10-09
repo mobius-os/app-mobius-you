@@ -15,6 +15,7 @@ import {
   parseDeletionDiagnosis,
   parseLinkAttempt,
   parseRailway,
+  parseWorkspacePlans,
   railwayAccountChanged,
   suggestRailwayRegion,
   waitForAccountLink,
@@ -422,6 +423,60 @@ test('suggests a nearby single region from time zone and gates region controls',
     ...base, connection: { ...base.connection, region_options: [{ id: 'unknown', label: 'No' }] },
   })
   assert.equal(malformed.connection.region_options, undefined)
+})
+
+test('validates per-workspace plan data strictly', () => {
+  const limits = {
+    cpu_choices: [1, 2, 4],
+    max_cpu: 4,
+    default_cpu: 2,
+    memory_options_mb: [512, 1024, 2048],
+    max_memory_mb: 2048,
+    default_memory_mb: 1024,
+    volume_options_mb: [500, 1000],
+    default_volume_mb: 500,
+    included_usd: 5,
+  }
+  const entry = (id, patch = {}) => ({
+    id, name: `Workspace ${id}`, plan: 'hobby', deploy_blocked: '', plan_limits: limits, ...patch,
+  })
+  const valid = { workspaces: [entry('a'), entry('b', { plan: 'unknown' })], current: 'b' }
+  assert.equal(parseWorkspacePlans(valid), valid)
+  const nullCurrent = { workspaces: [], current: null }
+  assert.equal(parseWorkspacePlans(nullCurrent), nullCurrent)
+
+  const rejected = [
+    { ...valid, extra: true },
+    { workspaces: valid.workspaces },
+    { ...valid, workspaces: 'a' },
+    { ...valid, current: 7 },
+    { ...valid, current: 'x'.repeat(129) },
+    { ...valid, workspaces: [{ ...entry('a'), extra: 1 }] },
+    { ...valid, workspaces: [{ id: 'a', name: 'A', plan: 'hobby', deploy_blocked: '' }] },
+    { ...valid, workspaces: [entry('a', { id: 7 })] },
+    { ...valid, workspaces: [entry('')] },
+    { ...valid, workspaces: [entry('a', { name: '' })] },
+    { ...valid, workspaces: [entry('a', { plan: 'enterprise' })] },
+    { ...valid, workspaces: [entry('a', { deploy_blocked: null })] },
+    { ...valid, workspaces: [entry('a', { plan_limits: { ...limits, max_cpu: '4' } })] },
+    { ...valid, workspaces: [entry('a', { plan_limits: null })] },
+    { ...valid, workspaces: [entry('a'), entry('a')] },
+    { ...valid, workspaces: Array.from({ length: 101 }, (_, i) => entry(`w${i}`)) },
+    { ...valid, workspaces: [entry('x'.repeat(129))] },
+    { ...valid, workspaces: [entry('a', { name: 'x'.repeat(129) })] },
+    { ...valid, workspaces: [entry('a', { deploy_blocked: 'x'.repeat(1001) })] },
+  ]
+  for (const value of rejected) assert.throws(() => parseWorkspacePlans(value))
+  const maximal = { workspaces: Array.from({ length: 100 }, (_, i) => entry(`w${i}`)), current: null }
+  assert.equal(parseWorkspacePlans(maximal), maximal)
+})
+
+test('the create form owns the workspace only when workspace plans are advertised', async () => {
+  const source = await readFile(new URL('./index.jsx', import.meta.url), 'utf8')
+  assert.match(source, /identityRequest\(token, '\/railway\/workspace-plans'\)\.catch\(\(\) => null\)/)
+  assert.match(source, /if \(workspace\) settings\.workspace_id = workspace\.id/)
+  assert.match(source, /workspaceChosenOnCreate=\{Boolean\(workspacePlans\)\}/)
+  assert.match(source, /workspaces\.length > 1 && !workspaceChosenOnCreate/)
 })
 
 test('opts into region choices through the platform inventory bridge', async () => {

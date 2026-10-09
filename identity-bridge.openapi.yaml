@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Möbius local identity bridge
-  version: 2.1.0
+  version: 2.2.0
   description: The only identity contract exposed to the mini-app. Every route requires the app's reviewed identity_manage capability.
 paths:
   /api/identity:
@@ -135,6 +135,40 @@ paths:
         '502': { description: Revocation unconfirmed; the local link is retained. }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/IdentityCapabilityRequired' }
+  /api/identity/railway/workspace-plans:
+    get:
+      operationId: readRailwayWorkspacePlans
+      description: >-
+        Lists each authorized Railway workspace with its own plan, deploy-blocked
+        notice, and plan limits so the create form can choose a workspace itself.
+        Requires the reviewed railway_manage grant. Platforms and launchers that
+        predate the route fail it; the app then keeps the connection-wide
+        workspace flow.
+      security: [{ appBearer: [] }]
+      responses:
+        '200':
+          description: Per-workspace plan data and the saved default workspace id.
+          content: { application/json: { schema: { $ref: '#/components/schemas/RailwayWorkspacePlans' } } }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+  /api/identity/railway/deployments:
+    post:
+      operationId: createRailwayDeployment
+      description: >-
+        Creates a deployment. Only the fields below are described here. Omit
+        workspace_id to deploy into the saved default workspace.
+      security: [{ appBearer: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string }
+                workspace_id: { type: string, minLength: 1, maxLength: 128 }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
 components:
   securitySchemes:
     appBearer:
@@ -207,6 +241,39 @@ components:
             input: { type: number, minimum: 0 }
             cached_input: { type: number, minimum: 0 }
             output: { type: number, minimum: 0 }
+    RailwayWorkspacePlans:
+      type: object
+      additionalProperties: false
+      required: [workspaces, current]
+      properties:
+        workspaces:
+          type: array
+          maxItems: 100
+          items: { $ref: '#/components/schemas/RailwayWorkspacePlan' }
+        current: { anyOf: [{ type: string, minLength: 1, maxLength: 128 }, { type: 'null' }] }
+    RailwayWorkspacePlan:
+      type: object
+      additionalProperties: false
+      required: [id, name, plan, deploy_blocked, plan_limits]
+      properties:
+        id: { type: string, minLength: 1, maxLength: 128 }
+        name: { type: string, minLength: 1, maxLength: 128 }
+        plan: { type: string, enum: [trial, free, hobby, pro, unknown] }
+        deploy_blocked: { type: string, maxLength: 1000 }
+        plan_limits: { $ref: '#/components/schemas/RailwayPlanLimits' }
+    RailwayPlanLimits:
+      type: object
+      required: [cpu_choices, max_cpu, memory_options_mb, max_memory_mb, volume_options_mb, default_volume_mb]
+      properties:
+        cpu_choices: { type: array, items: { type: integer, minimum: 1 } }
+        max_cpu: { type: integer, minimum: 1 }
+        default_cpu: { type: integer, minimum: 1 }
+        memory_options_mb: { type: array, items: { type: integer, minimum: 1 } }
+        max_memory_mb: { type: integer, minimum: 1 }
+        default_memory_mb: { type: integer, minimum: 1 }
+        volume_options_mb: { type: array, items: { type: integer, minimum: 1 } }
+        default_volume_mb: { type: integer, minimum: 1 }
+        included_usd: { anyOf: [{ type: number }, { type: 'null' }] }
     Identity:
       oneOf:
         - { $ref: '#/components/schemas/SignedOut' }

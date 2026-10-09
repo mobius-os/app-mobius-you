@@ -361,6 +361,38 @@ function validPlanLimits(value) {
     && Number.isInteger(value.default_volume_mb) && value.default_volume_mb > 0
 }
 
+const WORKSPACE_PLANS = ['trial', 'free', 'hobby', 'pro', 'unknown']
+
+function validWorkspacePlan(item) {
+  return exactKeys(item, ['id', 'name', 'plan', 'deploy_blocked', 'plan_limits'])
+    && typeof item.id === 'string'
+    && item.id.length > 0
+    && item.id.length <= 128
+    && typeof item.name === 'string'
+    && item.name.length > 0
+    && item.name.length <= 128
+    && WORKSPACE_PLANS.includes(item.plan)
+    && typeof item.deploy_blocked === 'string'
+    && item.deploy_blocked.length <= 1000
+    && validPlanLimits(item.plan_limits)
+}
+
+// Per-workspace plan data that lets the create form choose a workspace itself.
+// Strict: any failure means the platform or launcher predates the route, and
+// the caller keeps the legacy connection-wide flow.
+export function parseWorkspacePlans(value) {
+  if (
+    !exactKeys(value, ['workspaces', 'current'])
+    || !Array.isArray(value.workspaces)
+    || value.workspaces.length > 100
+    || !value.workspaces.every(validWorkspacePlan)
+    || new Set(value.workspaces.map(item => item.id)).size !== value.workspaces.length
+    || !(value.current === null
+      || (typeof value.current === 'string' && value.current.length > 0 && value.current.length <= 128))
+  ) throw new Error('Möbius returned invalid Railway workspace plans.')
+  return value
+}
+
 function validImageUpdatePolicies(value) {
   return Array.isArray(value)
     && value.length === IMAGE_UPDATE_POLICIES.length
