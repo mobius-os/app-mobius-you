@@ -308,9 +308,6 @@ test('accepts bounded Railway management state and rejects leaked fields', () =>
     connection: {
       connected: true,
       account: 'owner@example.com',
-      workspace: 'Personal',
-      plan: 'hobby',
-      deploy_blocked: '',
     },
     instances: [{
       id: 'mob_example',
@@ -341,58 +338,40 @@ test('accepts bounded Railway management state and rejects leaked fields', () =>
   }))
 })
 
-test('accepts an optional plan_limits block and rejects a malformed one', () => {
-  const base = {
+test('accepts a connection of only connected and account and ignores the old saved workspace', () => {
+  const minimal = {
     railway_access: 'available',
-    connection: {
-      connected: true,
-      account: 'owner@example.com',
-      workspace: 'Personal',
-      plan: 'hobby',
-      deploy_blocked: '',
-    },
+    connection: { connected: true, account: 'owner@example.com' },
     instances: [],
   }
-  // Absent plan_limits stays valid (older account host).
-  assert.equal(parseRailway(base), base)
+  assert.deepEqual(parseRailway(minimal).connection, { connected: true, account: 'owner@example.com' })
+  assert.throws(() => parseRailway({ ...minimal, connection: { connected: true } }))
+  assert.throws(() => parseRailway({ ...minimal, connection: { account: 'owner@example.com' } }))
+  assert.throws(() => parseRailway({ ...minimal, connection: { connected: true, account: 'x'.repeat(321) } }))
 
+  // An older launcher still sends the saved default: tolerated, even malformed, and never kept.
   const limits = {
-    cpu_choices: [1, 2, 4, 8],
-    max_cpu: 8,
-    memory_options_mb: [512, 1024, 2048, 4096, 8192],
-    max_memory_mb: 8192,
-    volume_options_mb: [500, 1000, 2000, 5000],
-    default_volume_mb: 2000,
+    cpu_choices: [1, 2], max_cpu: 2, memory_options_mb: [512], max_memory_mb: 512,
+    volume_options_mb: [500], default_volume_mb: 500,
   }
-  const withLimits = { ...base, connection: { ...base.connection, plan_limits: limits } }
-  assert.equal(parseRailway(withLimits), withLimits)
+  const old = parseRailway({
+    ...minimal,
+    connection: {
+      ...minimal.connection, workspace: 'Personal', plan: 'hobby', deploy_blocked: 'Add a card',
+      plan_limits: limits,
+    },
+  })
+  assert.deepEqual(old.connection, minimal.connection)
+  const odd = parseRailway({
+    ...minimal,
+    connection: { ...minimal.connection, workspace: 7, plan: null, deploy_blocked: {}, plan_limits: 'x' },
+  })
+  assert.deepEqual(odd.connection, minimal.connection)
 
-  // Malformed plan_limits is DROPPED (pickers omitted) — the panel is NOT blanked.
-  const drifted = parseRailway({
-    ...base,
-    connection: { ...base.connection, plan_limits: { ...limits, max_cpu: '8' } },
-  })
-  assert.equal(drifted.connection.plan_limits, undefined)
-  const partial = parseRailway({
-    ...base,
-    connection: { ...base.connection, plan_limits: { cpu_choices: [1] } },
-  })
-  assert.equal(partial.connection.plan_limits, undefined)
-  // Extra keys and empty option lists a newer host may send are tolerated (kept).
-  const extended = parseRailway({
-    ...base,
-    connection: { ...base.connection, plan_limits: { ...limits, max_volume_mb: 5000 } },
-  })
-  assert.ok(extended.connection.plan_limits)
-  const emptyChoices = parseRailway({
-    ...base,
-    connection: { ...base.connection, plan_limits: { ...limits, cpu_choices: [] } },
-  })
-  assert.ok(emptyChoices.connection.plan_limits)
   // An unrelated extra key on the connection is still rejected.
   assert.throws(() => parseRailway({
-    ...base,
-    connection: { ...base.connection, surprise: true },
+    ...minimal,
+    connection: { ...minimal.connection, surprise: true },
   }))
 })
 
@@ -405,8 +384,7 @@ test('suggests a nearby single region from time zone and gates region controls',
   const base = {
     railway_access: 'available',
     connection: {
-      connected: true, account: 'owner@example.com', workspace: 'Personal',
-      plan: 'hobby', deploy_blocked: '',
+      connected: true, account: 'owner@example.com',
     },
     instances: [],
   }
@@ -440,17 +418,18 @@ test('validates per-workspace plan data strictly', () => {
   const entry = (id, patch = {}) => ({
     id, name: `Workspace ${id}`, plan: 'hobby', deploy_blocked: '', plan_limits: limits, ...patch,
   })
-  const valid = { workspaces: [entry('a'), entry('b', { plan: 'unknown' }), entry('c', { plan: 'enterprise' })], current: 'b' }
+  const valid = { workspaces: [entry('a'), entry('b', { plan: 'unknown' }), entry('c', { plan: 'enterprise' })] }
   assert.equal(parseWorkspacePlans(valid), valid)
+  // `current` (the old saved default) is optional: an older launcher may still send it, never read.
+  const withCurrent = { ...valid, current: 'b' }
+  assert.equal(parseWorkspacePlans(withCurrent), withCurrent)
   const nullCurrent = { workspaces: [], current: null }
   assert.equal(parseWorkspacePlans(nullCurrent), nullCurrent)
 
   const rejected = [
     { ...valid, extra: true },
-    { workspaces: valid.workspaces },
+    { current: 'a' },
     { ...valid, workspaces: 'a' },
-    { ...valid, current: 7 },
-    { ...valid, current: 'x'.repeat(129) },
     { ...valid, workspaces: [{ ...entry('a'), extra: 1 }] },
     { ...valid, workspaces: [{ id: 'a', name: 'A', plan: 'hobby', deploy_blocked: '' }] },
     { ...valid, workspaces: [entry('a', { id: 7 })] },
@@ -469,47 +448,60 @@ test('validates per-workspace plan data strictly', () => {
   for (const value of rejected) assert.throws(() => parseWorkspacePlans(value))
   // Characters, not UTF-16 units: 128 emoji are 256 units and must be accepted.
   const emoji = '\u{1F600}'
-  const wide = { workspaces: [entry('a', { name: emoji.repeat(128), deploy_blocked: emoji.repeat(1000) })], current: null }
+  const wide = { workspaces: [entry('a', { name: emoji.repeat(128), deploy_blocked: emoji.repeat(1000) })] }
   assert.equal(parseWorkspacePlans(wide), wide)
-  assert.throws(() => parseWorkspacePlans({ workspaces: [entry('a', { name: emoji.repeat(129) })], current: null }))
-  assert.throws(() => parseWorkspacePlans({ workspaces: [entry('a', { deploy_blocked: emoji.repeat(1001) })], current: null }))
-  const maximal = { workspaces: Array.from({ length: 100 }, (_, i) => entry(`w${i}`)), current: null }
+  assert.throws(() => parseWorkspacePlans({ workspaces: [entry('a', { name: emoji.repeat(129) })] }))
+  assert.throws(() => parseWorkspacePlans({ workspaces: [entry('a', { deploy_blocked: emoji.repeat(1001) })] }))
+  const maximal = { workspaces: Array.from({ length: 100 }, (_, i) => entry(`w${i}`)) }
   assert.equal(parseWorkspacePlans(maximal), maximal)
 })
 
-test('the create form owns the workspace only when workspace plans are advertised', async () => {
+test('the create form owns the workspace and always sends it', async () => {
   const source = await readFile(new URL('./index.jsx', import.meta.url), 'utf8')
   // Plans load after the deployments are shown, never from quiet polling.
   assert.match(source, /identityRequest\(token, '\/railway\/workspace-plans'\)/)
   assert.match(source, /if \(!quiet\) void loadWorkspacePlans\(\)/)
   assert.doesNotMatch(source, /Promise\.all\(\[\s*identityRequest\(token, '\/railway\?region_options/)
-  // A transient failure keeps the plans held; a definitive one falls back to the legacy flow.
+  // A transient failure keeps the plans held; a definitive one clears them.
   assert.match(source, /requestError instanceof TypeError/)
   assert.match(source, /requestError\.status >= 500/)
-  assert.match(source, /if \(!transient && plansSequenceRef\.current === sequence\) setWorkspacePlans\(null\)/)
+  assert.match(source, /if \(!transient\) setWorkspacePlans\(null\)/)
   // The workspace in use is derived on every render, so it is always what is sent.
-  assert.match(source, /workspaces\.some\(item => item\.id === chosenWorkspaceId\)/)
-  assert.match(source, /if \(workspace\) settings\.workspace_id = workspace\.id/)
+  assert.match(source, /\[chosenWorkspaceId, preferredWorkspaceId\]/)
+  assert.match(source, /\.find\(Boolean\) \|\| workspaces\?\.\[0\]/)
+  assert.match(source, /settings\.workspace_id = workspace\.id/)
+  assert.doesNotMatch(source, /if \(workspace\) settings\.workspace_id/)
+  assert.match(source, /preferredWorkspaceId=\{railway\?\.instances\.find\(instance => instance\.workspace_id\)\?\.workspace_id\}/)
   // First connect and account change drop old plans and load the new account's.
-  assert.match(source, /setWorkspacePlans\(null\)\s+void loadWorkspacePlans\(\)/)
-  assert.match(source, /workspaceChosenOnCreate=\{Boolean\(workspacePlans\)\}/)
-  assert.match(source, /workspaces\.length > 1 && !workspaceChosenOnCreate/)
+  assert.match(source, /setWorkspacePlans\(null\)\s+setPlansSettled\(false\)\s+void loadWorkspacePlans\(\)/)
   // A possibly stale blocked notice never disables creating: the launcher re-checks live.
   assert.doesNotMatch(source, /Boolean\(blocked\)/)
   assert.doesNotMatch(source, /!name\.trim\(\) \|\| blocked/)
 })
 
-test('with several workspaces the header and banner describe the workspaces that matter', async () => {
+test('legacy connection-wide workspace handling is gone', async () => {
   const source = await readFile(new URL('./index.jsx', import.meta.url), 'utf8')
-  // Count in the header, no single plan badge, banner from blocked workspaces that host a deployment.
+  assert.doesNotMatch(source, /workspaceChosenOnCreate|reloadWorkspaces|workspaceSequenceRef/)
+  assert.doesNotMatch(source, /\/railway\/workspaces|'\/railway\/workspace'/)
+  assert.doesNotMatch(source, /connection\??\.(plan_limits|plan|workspace|deploy_blocked)\b/)
+  assert.doesNotMatch(source, /connectionLimits|connectionPlan/)
+})
+
+test('without workspace plans the app asks for an update and offers no new deployment', async () => {
+  const source = await readFile(new URL('./index.jsx', import.meta.url), 'utf8')
+  assert.match(source, /Update Möbius to choose a Railway workspace\./)
+  assert.match(source, /connected && plansMissing/)
+  assert.match(source, /connected && \(workspaceList \|\| !plansSettled\)/)
+  assert.match(source, /disabled=\{!name\.trim\(\) \|\| !workspace \|\| pending\}/)
+})
+
+test('the header and banner describe the workspaces that matter', async () => {
+  const source = await readFile(new URL('./index.jsx', import.meta.url), 'utf8')
   assert.match(source, /const severalWorkspaces = workspaceList\?\.length > 1/)
   assert.match(source, /instance\.workspace_id === item\.id/)
   assert.match(source, /`Railway connected · \$\{workspaceList\.length\} workspaces`/)
-  assert.match(source, /!severalWorkspaces && planTitle\(railway\.connection\.plan\)/)
-  // One workspace, or a host without per-workspace plans, keeps the connection's own state.
-  assert.match(source, /severalWorkspaces \? blockedHosts\.length > 0 : railway\.connection\?\.deploy_blocked/)
-  assert.match(source, /Railway workspace connected · \$\{railway\.connection\.workspace/)
-  assert.match(source, /'Default workspace plan' : 'Plan'/)
+  assert.match(source, /`Railway workspace connected · \$\{workspaceList\[0\]\.name\}`/)
+  assert.match(source, /workspaceList\?\.length === 1 && planTitle\(workspaceList\[0\]\.plan\)/)
 })
 
 test('a deployment may name its workspace, and a malformed value only loses that', () => {
@@ -531,10 +523,10 @@ test('a deployment may name its workspace, and a malformed value only loses that
   assert.throws(() => parse({ ...base, other: 1 }))
 })
 
-test('resource limits follow the deployment\'s own workspace with the connection as fallback', async () => {
+test('resource limits follow the deployment\'s own workspace', async () => {
   const source = await readFile(new URL('./index.jsx', import.meta.url), 'utf8')
-  assert.match(source, /find\(item => item\.id === instance\.workspace_id\)\?\.plan_limits/)
-  assert.match(source, /\?\? railway\?\.connection\?\.plan_limits/)
+  assert.match(source, /workspaceList\?\.find\(item => item\.id === instance\.workspace_id\)/)
+  assert.match(source, /workspaceList\?\.length === 1 \? workspaceList\[0\] : undefined/)
   assert.match(source, /planLimits=\{limitsFor\(managed\)\}/)
 })
 
@@ -543,11 +535,9 @@ test('opts into region choices through the platform inventory bridge', async () 
   assert.match(source, /identityRequest\(token, '\/railway\?region_options=1&workspace_ids=1'\)/)
 })
 
-test('shows advertised region choice without plan limits and reloads workspaces after account replacement', async () => {
+test('shows advertised region choice without plan limits and reloads plans after account replacement', async () => {
   const source = await readFile(new URL('./index.jsx', import.meta.url), 'utf8')
   assert.match(source, /\(planLimits \|\| regionOptions\?\.length > 0\)/)
-  assert.match(source, /if \(next\) await reloadWorkspaces\(\)/)
-  assert.match(source, /const sequence = \+\+workspaceSequenceRef\.current/)
   assert.match(source, /return next\s*\n\s*}\s*\n\s*if \(popup\.closed\)/)
 })
 
@@ -731,6 +721,8 @@ test('changing Railway account waits for a different connected account', async (
   const source = await readFile(new URL('./index.jsx', import.meta.url), 'utf8')
   assert.match(source, /Railway account<\/h2>/)
   assert.match(source, /Manage plan on Railway/)
+  assert.match(source, /'\/railway\/plan\/refresh'/)
+  assert.match(source, /'Refresh plans'/)
   assert.match(source, /Change hosting account/)
   const previous = 'first@example.com'
   assert.equal(railwayAccountChanged(previous, null), false)

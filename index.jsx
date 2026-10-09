@@ -751,6 +751,7 @@ function Deployments({
   items,
   railway,
   workspacePlans,
+  plansSettled,
   selfHosted,
   onNew,
   onManage,
@@ -768,24 +769,24 @@ function Deployments({
   connecting,
 }) {
   const managedById = new Map((railway?.instances || []).map(item => [item.id, item]))
-  // A deployment is limited by the plan of the workspace it lives in; the
-  // connection's saved workspace is only the fallback (older hosts, or a
-  // deployment whose workspace is not recorded yet).
-  const limitsFor = instance => (
-    workspacePlans?.workspaces.find(item => item.id === instance.workspace_id)?.plan_limits
-    ?? railway?.connection?.plan_limits
-  )
-  // With several workspaces the saved default says nothing about the others, so
-  // the header names the count and the attention banner lists the blocked
-  // workspaces that actually host one of these deployments (the create form
-  // shows its own workspace's notice). With one workspace, or against a host
-  // that does not send per-workspace plans, it is the connection's own state.
+  // Everything per workspace comes from the workspace plans. A deployment is
+  // limited by the plan of the workspace it lives in; one whose workspace is
+  // not recorded can only be placed when there is exactly one workspace.
   const workspaceList = workspacePlans?.workspaces
   const severalWorkspaces = workspaceList?.length > 1
-  const blockedHosts = severalWorkspaces
-    ? workspaceList.filter(item => item.deploy_blocked
-      && (railway?.instances || []).some(instance => instance.workspace_id === item.id))
-    : []
+  const limitsFor = instance => (
+    instance.workspace_id
+      ? workspaceList?.find(item => item.id === instance.workspace_id)
+      : (workspaceList?.length === 1 ? workspaceList[0] : undefined)
+  )?.plan_limits
+  // With several workspaces the header names the count and the attention banner
+  // lists the blocked workspaces that actually host one of these deployments
+  // (the create form shows its own workspace's notice). With one workspace it
+  // is that workspace's own state, even before it hosts anything.
+  const blockedWorkspaces = (workspaceList || []).filter(item => item.deploy_blocked
+    && (!severalWorkspaces
+      || (railway?.instances || []).some(instance => instance.workspace_id === item.id)))
+  const plansMissing = Boolean(plansSettled) && !workspaceList
   const deploymentOrigin = value => {
     try {
       const parsed = new URL(value)
@@ -863,13 +864,21 @@ function Deployments({
           </div>
         </div>
       )}
-      {connected && (severalWorkspaces ? blockedHosts.length > 0 : railway.connection?.deploy_blocked) && (
+      {connected && plansMissing && (
+        <div className="id-railway-callout">
+          <div>
+            <strong>Update Möbius to choose a Railway workspace.</strong>
+            <span>New deployments are unavailable until then. Your existing deployments keep working.</span>
+          </div>
+        </div>
+      )}
+      {connected && blockedWorkspaces.length > 0 && (
         <div className="id-railway-callout id-railway-callout--warn">
           <div>
             <strong>Railway needs attention</strong>
-            {severalWorkspaces
-              ? blockedHosts.map(item => <span key={item.id}>{item.name}: {item.deploy_blocked}</span>)
-              : <span>{railway.connection.deploy_blocked}</span>}
+            {blockedWorkspaces.map(item => (
+              <span key={item.id}>{severalWorkspaces ? `${item.name}: ` : ''}{item.deploy_blocked}</span>
+            ))}
           </div>
         </div>
       )}
@@ -1014,8 +1023,8 @@ function Deployments({
           )
         })}
       </div>
-      {connected && (
-        <button type="button" className="id-add-row" onClick={onNew}>
+      {connected && (workspaceList || !plansSettled) && (
+        <button type="button" className="id-add-row" disabled={!workspaceList} onClick={onNew}>
           <span className="id-add-plus" aria-hidden="true"><Plus width={17} /></span>
           New deployment
         </button>
@@ -1025,10 +1034,12 @@ function Deployments({
           <span className="id-railway-conn-account">
             {severalWorkspaces
               ? `Railway connected · ${workspaceList.length} workspaces`
-              : `Railway workspace connected · ${railway.connection.workspace || railway.connection.account || 'Connected'}`}
+              : workspaceList?.length === 1
+                ? `Railway workspace connected · ${workspaceList[0].name}`
+                : 'Railway connected'}
           </span>
-          {!severalWorkspaces && planTitle(railway.connection.plan) && (
-            <span className="id-railway-plan">{planTitle(railway.connection.plan)}</span>
+          {workspaceList?.length === 1 && planTitle(workspaceList[0].plan) && (
+            <span className="id-railway-plan">{planTitle(workspaceList[0].plan)}</span>
           )}
           <a className="id-railway-plan-link" href="https://railway.com/workspace/plans" target="_blank" rel="noopener noreferrer">
             Manage plan on Railway <ArrowUpRight width={13} aria-hidden="true" />
@@ -1139,8 +1150,8 @@ function planTitle(label) {
 }
 
 // Plan-bounded CPU / RAM / (optional) storage pickers, mirroring the resource
-// choices the mobius.you website offers. `limits` is connection.plan_limits from
-// the account host; when it is absent the component renders nothing so the modal
+// choices the mobius.you website offers. `limits` is the plan_limits of the
+// deployment's workspace; when it is absent the component renders nothing so the modal
 // gracefully falls back to plan defaults. Storage is rendered only when onVolume
 // is supplied; storageMinMb enforces Railway's grow-only rule in the manage flow.
 function ResourceFields({
@@ -1214,28 +1225,23 @@ function resourceDefaults(limits) {
 // launch summary, resources, and access tucked behind Advanced settings, plus
 // a Deploy Möbius action. Container updates stay in the normal Settings flow.
 function NewDeploymentModal({
-  onClose, onCreate, planLimits: connectionLimits, plan: connectionPlan, workspacePlans,
-  regionOptions,
+  onClose, onCreate, workspacePlans, preferredWorkspaceId, regionOptions,
 }) {
   const [name, setName] = useState('My Möbius')
   const [managedAuth, setManagedAuth] = useState(true)
-  // With workspacePlans the form owns the workspace choice; limits, plan and
-  // blocked notice then come from the selected workspace, not the connection.
-  // The workspace in use is derived on every render: plans can arrive after the
-  // modal opened, or a reload can drop the chosen one, and what is shown must
-  // always be what gets sent.
+  // The form owns the workspace choice; limits, plan and blocked notice come
+  // from the selected workspace. The workspace in use is derived on every
+  // render: plans can arrive after the modal opened, or a reload can drop the
+  // chosen one, and what is shown must always be what gets sent. Until the
+  // owner picks one it starts from the workspace of their latest deployment.
   const [chosenWorkspaceId, setChosenWorkspaceId] = useState('')
   const workspaces = workspacePlans?.workspaces
-  const workspaceId = workspaces?.length
-    ? (workspaces.some(item => item.id === chosenWorkspaceId)
-      ? chosenWorkspaceId
-      : (workspaces.some(item => item.id === workspacePlans.current)
-        ? workspacePlans.current
-        : workspaces[0].id))
-    : ''
-  const workspace = workspaces?.find(item => item.id === workspaceId)
-  const planLimits = workspace ? workspace.plan_limits : connectionLimits
-  const plan = workspace ? workspace.plan : connectionPlan
+  const workspace = [chosenWorkspaceId, preferredWorkspaceId]
+    .map(id => workspaces?.find(item => item.id === id))
+    .find(Boolean) || workspaces?.[0]
+  const workspaceId = workspace?.id || ''
+  const planLimits = workspace?.plan_limits
+  const plan = workspace?.plan
   // Shown as a notice only: it can be minutes old, and creating re-checks the
   // plan live, so the owner is never blocked by stale data after fixing billing.
   const blocked = workspace?.deploy_blocked || ''
@@ -1265,7 +1271,7 @@ function NewDeploymentModal({
 
   const submit = async event => {
     event.preventDefault()
-    if (!name.trim() || pending) return
+    if (!name.trim() || !workspace || pending) return
     setPending(true)
     setError('')
     try {
@@ -1277,7 +1283,7 @@ function NewDeploymentModal({
         volume_mb: volume ? Number(volume) : null,
       }
       if (regionOptions?.length && region) settings.region = region
-      if (workspace) settings.workspace_id = workspace.id
+      settings.workspace_id = workspace.id
       await onCreate(settings)
       onClose()
     } catch (requestError) {
@@ -1442,6 +1448,7 @@ function NewDeploymentModal({
           </label>
         )}
 
+        {!workspace && <div className="id-manage-error" role="alert">Update Möbius to choose a Railway workspace.</div>}
         {blocked && <div className="id-manage-error" role="alert">{blocked}</div>}
         {error && <div className="id-signin-error" role="alert">{error}</div>}
 
@@ -1453,7 +1460,7 @@ function NewDeploymentModal({
             <button type="button" className="id-btn" disabled={pending} onClick={onClose}>
               Cancel
             </button>
-            <button type="submit" className="id-btn id-btn--primary id-deploy-btn" disabled={!name.trim() || pending}>
+            <button type="submit" className="id-btn id-btn--primary id-deploy-btn" disabled={!name.trim() || !workspace || pending}>
               {pending ? 'Deploying…' : <><WandIcon width={16} /> Deploy Möbius</>}
             </button>
           </div>
@@ -1878,6 +1885,7 @@ function ManageDeploymentPanel({
               />
             ) : (
               <div className="id-resource-fields">
+                <p className="id-storage-limit-note">Plan limits are unavailable until the deployment's workspace is known.</p>
                 <label className="id-field-block">
                   <span className="id-label">CPU</span>
                   <input
@@ -2103,35 +2111,15 @@ function DeleteDeploymentModal({
 }
 
 function RailwayConnectionModal({
-  token, connection, workspaceChosenOnCreate, onClose, onReload, onChangeAccount,
+  token, connection, onClose, onReload, onChangeAccount,
   onDisconnected, connecting, connectionError,
 }) {
-  const [inventory, setInventory] = useState(null)
-  const workspaceSequenceRef = useRef(0)
   const [pending, setPending] = useState('')
   const [error, setError] = useState('')
   const [confirmDisconnect, setConfirmDisconnect] = useState(false)
   const closeRef = useRef(null)
   const busy = Boolean(pending) || connecting
   const dialogRef = useDialog(onClose, busy, closeRef)
-
-  const reloadWorkspaces = useCallback(async () => {
-    const sequence = ++workspaceSequenceRef.current
-    setInventory(null)
-    try {
-      const data = await identityRequest(token, '/railway/workspaces')
-      if (workspaceSequenceRef.current === sequence) setInventory(data)
-    } catch {
-      if (workspaceSequenceRef.current === sequence) {
-        setInventory({ workspaces: [], current: null })
-      }
-    }
-  }, [token])
-
-  useEffect(() => {
-    void reloadWorkspaces()
-    return () => { workspaceSequenceRef.current += 1 }
-  }, [reloadWorkspaces])
 
   const run = async (action, work) => {
     if (pending) return
@@ -2145,9 +2133,6 @@ function RailwayConnectionModal({
       setPending('')
     }
   }
-
-  const workspaces = inventory?.workspaces || []
-  const currentWorkspace = inventory?.current || ''
 
   return (
     <div className="id-modal-backdrop" onMouseDown={event => {
@@ -2173,44 +2158,8 @@ function RailwayConnectionModal({
         </div>
 
         <div className="id-connection-facts">
-          {/* Render the workspace field from the first paint using the name the
-             connection already carries, so it never pops in after the inventory
-             fetch. It upgrades to an interactive picker only if more than one
-             workspace is authorized and new deployments do not choose their own. */}
           <div className="id-connection-fact">
-            <span className="id-label">{workspaceChosenOnCreate ? 'Default workspace' : 'Workspace'}</span>
-            {workspaces.length > 1 && !workspaceChosenOnCreate ? (
-              <select
-                className="id-select"
-                value={currentWorkspace}
-                disabled={busy}
-                aria-label="Railway workspace"
-                onChange={event => {
-                  const nextId = event.target.value
-                  run('workspace', async () => {
-                    await identityRequest(token, '/railway/workspace', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ workspace_id: nextId }),
-                    })
-                    // Keep the picker in sync with the switch: loadRailway refreshes
-                    // /railway (the header) but not this modal's workspace inventory.
-                    setInventory(previous => (previous ? { ...previous, current: nextId } : previous))
-                    await onReload()
-                  })
-                }}
-              >
-                {workspaces.map(item => (
-                  <option key={item.id} value={item.id}>{item.name}</option>
-                ))}
-              </select>
-            ) : (
-              <span className="id-connection-value">{connection.workspace || 'Not selected'}</span>
-            )}
-          </div>
-          <div className="id-connection-fact">
-            <span className="id-label">{workspaceChosenOnCreate ? 'Default workspace plan' : 'Plan'}</span>
-            <span className="id-connection-value">{planTitle(connection.plan) || 'Not detected yet'}</span>
+            <span className="id-label">Railway plans</span>
             <div className="id-connection-plan-actions">
               <a className="id-btn id-connection-plan-link" href="https://railway.com/workspace/plans" target="_blank" rel="noopener noreferrer" aria-label="Manage Railway plan in a new tab">
                 Manage plan on Railway <ArrowUpRight width={15} aria-hidden="true" />
@@ -2219,21 +2168,17 @@ function RailwayConnectionModal({
                 type="button"
                 className="id-btn id-connection-refresh"
                 disabled={busy}
-                aria-label="Refresh Railway plan"
                 onClick={() => run('plan', async () => {
                   await identityRequest(token, '/railway/plan/refresh', { method: 'POST' })
                   await onReload()
                 })}
               >
-                {pending === 'plan' ? 'Refreshing…' : 'Refresh'}
+                {pending === 'plan' ? 'Refreshing…' : 'Refresh plans'}
               </button>
             </div>
           </div>
         </div>
 
-        {connection.deploy_blocked && (
-          <div className="id-manage-error">{connection.deploy_blocked}</div>
-        )}
         {(error || connectionError) && <div className="id-signin-error" role="alert">{error || connectionError}</div>}
 
         {confirmDisconnect ? (
@@ -2259,10 +2204,7 @@ function RailwayConnectionModal({
           </div>
         ) : (
           <div className="id-connection-footer">
-            <button type="button" className="id-btn" disabled={busy} onClick={() => run('change', async () => {
-              const next = await onChangeAccount()
-              if (next) await reloadWorkspaces()
-            })}>
+            <button type="button" className="id-btn" disabled={busy} onClick={() => run('change', onChangeAccount)}>
               {connecting ? 'Connecting…' : 'Change hosting account'}
             </button>
             <button type="button" className="id-btn id-btn--quiet id-connection-disconnect" disabled={busy} aria-label="Disconnect Railway" onClick={() => setConfirmDisconnect(true)}>
@@ -2492,6 +2434,7 @@ export default function App({ appId, token }) {
   const [data, setData] = useState(null)
   const [railway, setRailway] = useState(null)
   const [workspacePlans, setWorkspacePlans] = useState(null)
+  const [plansSettled, setPlansSettled] = useState(false)
   const plansSequenceRef = useRef(0)
   const [railwayError, setRailwayError] = useState('')
   const [agentAccess, setAgentAccess] = useState(null)
@@ -2538,20 +2481,24 @@ export default function App({ appId, token }) {
   }, [load])
 
   // Older platforms and launchers lack the workspace-plans route: a definitive
-  // failure of it (not supported, not connected, malformed) keeps the legacy
-  // connection-wide workspace flow. A transient one (network, 5xx) keeps the
-  // plans already held, so the form never changes target mid-session.
+  // failure of it (not supported, not connected, malformed) clears the plans,
+  // which turns off creating deployments. A transient one (network, 5xx) keeps
+  // the plans already held, so the form never changes target mid-session.
   const loadWorkspacePlans = useCallback(async () => {
     const sequence = ++plansSequenceRef.current
     try {
       const plans = await identityRequest(token, '/railway/workspace-plans')
       if (plansSequenceRef.current === sequence) {
         setWorkspacePlans(plans.workspaces.length ? plans : null)
+        setPlansSettled(true)
       }
     } catch (requestError) {
       const transient = requestError instanceof TypeError
         || (requestError instanceof IdentityRequestError && requestError.status >= 500)
-      if (!transient && plansSequenceRef.current === sequence) setWorkspacePlans(null)
+      if (plansSequenceRef.current === sequence) {
+        if (!transient) setWorkspacePlans(null)
+        setPlansSettled(true)
+      }
     }
   }, [token])
 
@@ -2581,6 +2528,7 @@ export default function App({ appId, token }) {
     } else {
       setRailway(null)
       setWorkspacePlans(null)
+      setPlansSettled(false)
     }
     return () => {
       railwaySequenceRef.current += 1
@@ -2777,6 +2725,7 @@ export default function App({ appId, token }) {
         if (replace ? railwayAccountChanged(previousAccount, next) : next?.connection?.connected) {
           try { popup.close() } catch { /* already closed */ }
           setWorkspacePlans(null)
+          setPlansSettled(false)
           void loadWorkspacePlans()
           return next
         }
@@ -2952,6 +2901,7 @@ export default function App({ appId, token }) {
                 items={data.deployments}
                 railway={railway}
                 workspacePlans={workspacePlans}
+                plansSettled={plansSettled}
                 selfHosted={mode === 'linked'}
                 onNew={() => setCreatingDeployment(true)}
                 managingDeployment={managingDeployment}
@@ -3046,9 +2996,8 @@ export default function App({ appId, token }) {
         )}
         {creatingDeployment && (
           <NewDeploymentModal
-            planLimits={railway?.connection?.plan_limits}
-            plan={railway?.connection?.plan}
             workspacePlans={workspacePlans}
+            preferredWorkspaceId={railway?.instances.find(instance => instance.workspace_id)?.workspace_id}
             regionOptions={railway?.connection?.region_options}
             onClose={() => setCreatingDeployment(false)}
             onCreate={payload => railwayAction('/deployments', {
@@ -3076,7 +3025,6 @@ export default function App({ appId, token }) {
           <RailwayConnectionModal
             token={token}
             connection={railway.connection}
-            workspaceChosenOnCreate={Boolean(workspacePlans)}
             onClose={() => setManagingRailway(false)}
             onReload={loadRailway}
             onChangeAccount={() => connectRailway(true)}
