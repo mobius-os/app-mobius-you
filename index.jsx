@@ -775,6 +775,17 @@ function Deployments({
     workspacePlans?.workspaces.find(item => item.id === instance.workspace_id)?.plan_limits
     ?? railway?.connection?.plan_limits
   )
+  // With several workspaces the saved default says nothing about the others, so
+  // the header names the count and the attention banner lists the blocked
+  // workspaces that actually host one of these deployments (the create form
+  // shows its own workspace's notice). With one workspace, or against a host
+  // that does not send per-workspace plans, it is the connection's own state.
+  const workspaceList = workspacePlans?.workspaces
+  const severalWorkspaces = workspaceList?.length > 1
+  const blockedHosts = severalWorkspaces
+    ? workspaceList.filter(item => item.deploy_blocked
+      && (railway?.instances || []).some(instance => instance.workspace_id === item.id))
+    : []
   const deploymentOrigin = value => {
     try {
       const parsed = new URL(value)
@@ -852,11 +863,13 @@ function Deployments({
           </div>
         </div>
       )}
-      {connected && railway.connection?.deploy_blocked && (
+      {connected && (severalWorkspaces ? blockedHosts.length > 0 : railway.connection?.deploy_blocked) && (
         <div className="id-railway-callout id-railway-callout--warn">
           <div>
             <strong>Railway needs attention</strong>
-            <span>{railway.connection.deploy_blocked}</span>
+            {severalWorkspaces
+              ? blockedHosts.map(item => <span key={item.id}>{item.name}: {item.deploy_blocked}</span>)
+              : <span>{railway.connection.deploy_blocked}</span>}
           </div>
         </div>
       )}
@@ -1010,9 +1023,11 @@ function Deployments({
       {connected && railway.connection && (
         <div className="id-dep-foot">
           <span className="id-railway-conn-account">
-            Railway workspace connected · {railway.connection.workspace || railway.connection.account || 'Connected'}
+            {severalWorkspaces
+              ? `Railway connected · ${workspaceList.length} workspaces`
+              : `Railway workspace connected · ${railway.connection.workspace || railway.connection.account || 'Connected'}`}
           </span>
-          {planTitle(railway.connection.plan) && (
+          {!severalWorkspaces && planTitle(railway.connection.plan) && (
             <span className="id-railway-plan">{planTitle(railway.connection.plan)}</span>
           )}
           <a className="id-railway-plan-link" href="https://railway.com/workspace/plans" target="_blank" rel="noopener noreferrer">
@@ -2194,7 +2209,7 @@ function RailwayConnectionModal({
             )}
           </div>
           <div className="id-connection-fact">
-            <span className="id-label">Plan</span>
+            <span className="id-label">{workspaceChosenOnCreate ? 'Default workspace plan' : 'Plan'}</span>
             <span className="id-connection-value">{planTitle(connection.plan) || 'Not detected yet'}</span>
             <div className="id-connection-plan-actions">
               <a className="id-btn id-connection-plan-link" href="https://railway.com/workspace/plans" target="_blank" rel="noopener noreferrer" aria-label="Manage Railway plan in a new tab">

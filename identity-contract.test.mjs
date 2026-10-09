@@ -499,6 +499,19 @@ test('the create form owns the workspace only when workspace plans are advertise
   assert.doesNotMatch(source, /!name\.trim\(\) \|\| blocked/)
 })
 
+test('with several workspaces the header and banner describe the workspaces that matter', async () => {
+  const source = await readFile(new URL('./index.jsx', import.meta.url), 'utf8')
+  // Count in the header, no single plan badge, banner from blocked workspaces that host a deployment.
+  assert.match(source, /const severalWorkspaces = workspaceList\?\.length > 1/)
+  assert.match(source, /instance\.workspace_id === item\.id/)
+  assert.match(source, /`Railway connected · \$\{workspaceList\.length\} workspaces`/)
+  assert.match(source, /!severalWorkspaces && planTitle\(railway\.connection\.plan\)/)
+  // One workspace, or a host without per-workspace plans, keeps the connection's own state.
+  assert.match(source, /severalWorkspaces \? blockedHosts\.length > 0 : railway\.connection\?\.deploy_blocked/)
+  assert.match(source, /Railway workspace connected · \$\{railway\.connection\.workspace/)
+  assert.match(source, /'Default workspace plan' : 'Plan'/)
+})
+
 test('a deployment may name its workspace, and a malformed value only loses that', () => {
   const base = {
     id: 'mob_abc', name: 'A', status: 'ready', url: null, railway_url: null,
