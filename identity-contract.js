@@ -290,11 +290,15 @@ function nullableString(value, max) {
   return value === null || (typeof value === 'string' && value.length <= max)
 }
 
+function nullableWorkspaceId(value) {
+  return value === null || (typeof value === 'string' && value.length > 0 && value.length <= 128)
+}
+
 function validRailwayInstance(instance) {
   if (!exactKeys(instance, [
     'id', 'name', 'status', 'url', 'railway_url', 'current_step',
     'last_error', 'resources', 'actions',
-  ], ['updates'])) return false
+  ], ['updates', 'workspace_id'])) return false
   if (
     typeof instance.id !== 'string'
     || !/^mob_[A-Za-z0-9_-]{3,80}$/.test(instance.id)
@@ -359,6 +363,45 @@ function validPlanLimits(value) {
     && Number.isInteger(value.max_memory_mb) && value.max_memory_mb > 0
     && positiveIntList(value.volume_options_mb)
     && Number.isInteger(value.default_volume_mb) && value.default_volume_mb > 0
+    && (value.included_usd === null || (typeof value.included_usd === 'number' && value.included_usd >= 0))
+    && Number.isInteger(value.default_cpu) && value.default_cpu > 0
+    && Number.isInteger(value.default_memory_mb) && value.default_memory_mb > 0
+}
+
+const WORKSPACE_PLANS = ['trial', 'free', 'hobby', 'pro', 'enterprise', 'unknown']
+
+// Lengths are counted in characters (code points), as the account service and
+// the platform count them; String.length counts UTF-16 units and would reject a
+// 128-emoji name they accept.
+const characters = value => [...value].length
+
+function validWorkspacePlan(item) {
+  return exactKeys(item, ['id', 'name', 'plan', 'deploy_blocked', 'plan_limits'])
+    && typeof item.id === 'string'
+    && characters(item.id) > 0
+    && characters(item.id) <= 128
+    && typeof item.name === 'string'
+    && characters(item.name) > 0
+    && characters(item.name) <= 128
+    && WORKSPACE_PLANS.includes(item.plan)
+    && typeof item.deploy_blocked === 'string'
+    && characters(item.deploy_blocked) <= 1000
+    && validPlanLimits(item.plan_limits)
+}
+
+// Per-workspace plan data that lets the create form choose a workspace itself.
+// Strict: any failure means the platform or launcher predates the route, and
+// the caller asks the owner to update. `current` was a saved default workspace
+// that older launchers still send; it is tolerated and never read.
+export function parseWorkspacePlans(value) {
+  if (
+    !exactKeys(value, ['workspaces'], ['current'])
+    || !Array.isArray(value.workspaces)
+    || value.workspaces.length > 100
+    || !value.workspaces.every(validWorkspacePlan)
+    || new Set(value.workspaces.map(item => item.id)).size !== value.workspaces.length
+  ) throw new Error('Möbius returned invalid Railway workspace plans.')
+  return value
 }
 
 function validImageUpdatePolicies(value) {
@@ -387,6 +430,14 @@ export function parseRailway(value) {
     || value.instances.length > 100
     || !value.instances.every(validRailwayInstance)
   ) throw new Error('Möbius returned invalid Railway deployment state.')
+  // The workspace a deployment is in is an advertised extension (requested with
+  // ?workspace_ids=1). A malformed value only costs that deployment its
+  // workspace-specific limits; it never blanks the deployments panel.
+  for (const instance of value.instances) {
+    if (instance.workspace_id !== undefined && !nullableWorkspaceId(instance.workspace_id)) {
+      delete instance.workspace_id
+    }
+  }
 
   if (value.railway_access !== 'available') {
     if (value.connection !== null || value.instances.length) {
@@ -397,25 +448,22 @@ export function parseRailway(value) {
   if (value.connection !== null) {
     const connection = value.connection
     if (
-      !exactKeys(connection, [
-        'connected', 'account', 'workspace', 'plan', 'deploy_blocked',
-      ], ['plan_limits', 'update_policies', 'adopt_current', 'region_options'])
+      !exactKeys(connection, ['connected', 'account'], [
+        'workspace', 'plan', 'deploy_blocked', 'plan_limits',
+        'update_policies', 'adopt_current', 'region_options',
+      ])
       || typeof connection.connected !== 'boolean'
       || typeof connection.account !== 'string'
       || connection.account.length > 320
-      || typeof connection.workspace !== 'string'
-      || connection.workspace.length > 128
-      || typeof connection.plan !== 'string'
-      || connection.plan.length > 32
-      || typeof connection.deploy_blocked !== 'string'
-      || connection.deploy_blocked.length > 360
     ) throw new Error('Möbius returned an invalid Railway connection.')
-    // Shape drift in the OPTIONAL plan_limits costs only the resource pickers:
-    // drop it so a newer/mismatched host never blanks the whole Railway panel.
-    if (connection.plan_limits !== undefined && !validPlanLimits(connection.plan_limits)) {
-      delete connection.plan_limits
-    }
-    // Like plan limits, this is an advertised capability. A malformed extension
+    // The workspace and its plan belong to each deployment and are read from
+    // the per-workspace plans. An older launcher still sends a saved default
+    // here: drop it at this boundary so nothing can fall back to it.
+    delete connection.workspace
+    delete connection.plan
+    delete connection.deploy_blocked
+    delete connection.plan_limits
+    // This is an advertised capability. A malformed extension
     // hides only the new controls; it never blanks the deployments panel.
     if (
       connection.update_policies !== undefined

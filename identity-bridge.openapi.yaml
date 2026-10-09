@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Möbius local identity bridge
-  version: 2.1.0
+  version: 2.2.0
   description: The only identity contract exposed to the mini-app. Every route requires the app's reviewed identity_manage capability.
 paths:
   /api/identity:
@@ -135,6 +135,77 @@ paths:
         '502': { description: Revocation unconfirmed; the local link is retained. }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/IdentityCapabilityRequired' }
+  /api/identity/railway:
+    get:
+      operationId: readRailway
+      description: >-
+        Reads the Railway connection (connected, account) and deployments. The
+        connection carries no workspace, plan, or deploy-blocked state: those
+        are per workspace and come from the workspace-plans route. Opt-in
+        extensions are
+        requested with query flags and ignored by hosts that predate them:
+        region_options=1 adds the connection's region choices, and
+        workspace_ids=1 adds each deployment's workspace_id (null until the host
+        has recorded it) so the resource editor can use that workspace's plan
+        limits. Without the flags the response keeps its original shape.
+      security: [{ appBearer: [] }]
+      parameters:
+        - { name: region_options, in: query, required: false, schema: { type: string, enum: ['1'] } }
+        - { name: workspace_ids, in: query, required: false, schema: { type: string, enum: ['1'] } }
+      responses:
+        '200': { description: The Railway connection and deployments. }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+  /api/identity/railway/workspace-plans:
+    get:
+      operationId: readRailwayWorkspacePlans
+      description: >-
+        Lists each authorized Railway workspace with its own plan, deploy-blocked
+        notice, and plan limits so the create form can choose a workspace itself.
+        Requires the reviewed railway_manage grant. Platforms and launchers that
+        predate the route fail it; the app then asks the owner to update Möbius
+        and offers no new deployment.
+      security: [{ appBearer: [] }]
+      responses:
+        '200':
+          description: Per-workspace plan data.
+          content: { application/json: { schema: { $ref: '#/components/schemas/RailwayWorkspacePlans' } } }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+  /api/identity/railway/deployments:
+    post:
+      operationId: createRailwayDeployment
+      description: >-
+        Creates a deployment in the chosen Railway workspace. Only the fields
+        below are described here. There is no default workspace: workspace_id
+        is required.
+      security: [{ appBearer: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, workspace_id]
+              properties:
+                name: { type: string, minLength: 1, maxLength: 80 }
+                managed_auth: { type: boolean }
+                cpu: { type: [integer, 'null'] }
+                memory_mb: { type: [integer, 'null'] }
+                volume_mb: { type: [integer, 'null'] }
+                update_policy: { type: string, enum: [automatic, manual] }
+                region: { type: string }
+                workspace_id: { type: string, minLength: 1, maxLength: 128 }
+      responses:
+        '202': { description: The deployment was queued. }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '422': { description: A field is invalid, for example a missing or blank workspace_id. }
+  /api/identity/railway/plan/refresh:
+    post:
+      operationId: refreshRailwayPlans
+      description: Re-reads the plan of every authorized Railway workspace live and returns the updated inventory.
+      security: [{ appBearer: [] }]
+      responses:
+        '200': { description: The refreshed Railway connection and deployments. }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
 components:
   securitySchemes:
     appBearer:
@@ -207,6 +278,41 @@ components:
             input: { type: number, minimum: 0 }
             cached_input: { type: number, minimum: 0 }
             output: { type: number, minimum: 0 }
+    RailwayWorkspacePlans:
+      type: object
+      additionalProperties: false
+      required: [workspaces]
+      properties:
+        workspaces:
+          type: array
+          maxItems: 100
+          items: { $ref: '#/components/schemas/RailwayWorkspacePlan' }
+        current:
+          description: Older launchers still send a saved default workspace id. It is ignored.
+          anyOf: [{ type: string, minLength: 1, maxLength: 128 }, { type: 'null' }]
+    RailwayWorkspacePlan:
+      type: object
+      additionalProperties: false
+      required: [id, name, plan, deploy_blocked, plan_limits]
+      properties:
+        id: { type: string, minLength: 1, maxLength: 128 }
+        name: { type: string, minLength: 1, maxLength: 128 }
+        plan: { type: string, enum: [trial, free, hobby, pro, enterprise, unknown] }
+        deploy_blocked: { type: string, maxLength: 1000 }
+        plan_limits: { $ref: '#/components/schemas/RailwayPlanLimits' }
+    RailwayPlanLimits:
+      type: object
+      required: [cpu_choices, max_cpu, default_cpu, memory_options_mb, max_memory_mb, default_memory_mb, volume_options_mb, default_volume_mb, included_usd]
+      properties:
+        cpu_choices: { type: array, items: { type: integer, minimum: 1 } }
+        max_cpu: { type: integer, minimum: 1 }
+        default_cpu: { type: integer, minimum: 1 }
+        memory_options_mb: { type: array, items: { type: integer, minimum: 1 } }
+        max_memory_mb: { type: integer, minimum: 1 }
+        default_memory_mb: { type: integer, minimum: 1 }
+        volume_options_mb: { type: array, items: { type: integer, minimum: 1 } }
+        default_volume_mb: { type: integer, minimum: 1 }
+        included_usd: { anyOf: [{ type: number }, { type: 'null' }] }
     Identity:
       oneOf:
         - { $ref: '#/components/schemas/SignedOut' }
