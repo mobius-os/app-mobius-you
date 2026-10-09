@@ -787,6 +787,7 @@ function Deployments({
     && (!severalWorkspaces
       || (railway?.instances || []).some(instance => instance.workspace_id === item.id)))
   const plansMissing = Boolean(plansSettled) && !workspaceList
+  const noWorkspaces = Boolean(plansSettled) && workspaceList?.length === 0
   const deploymentOrigin = value => {
     try {
       const parsed = new URL(value)
@@ -869,6 +870,14 @@ function Deployments({
           <div>
             <strong>Update Möbius to choose a Railway workspace.</strong>
             <span>New deployments are unavailable until then. Your existing deployments keep working.</span>
+          </div>
+        </div>
+      )}
+      {connected && noWorkspaces && (
+        <div className="id-railway-callout">
+          <div>
+            <strong>Railway did not share a workspace.</strong>
+            <span>Reconnect Railway and share a workspace to create deployments.</span>
           </div>
         </div>
       )}
@@ -1024,7 +1033,7 @@ function Deployments({
         })}
       </div>
       {connected && (workspaceList || !plansSettled) && (
-        <button type="button" className="id-add-row" disabled={!workspaceList} onClick={onNew}>
+        <button type="button" className="id-add-row" disabled={!workspaceList?.length} onClick={onNew}>
           <span className="id-add-plus" aria-hidden="true"><Plus width={17} /></span>
           New deployment
         </button>
@@ -1448,7 +1457,13 @@ function NewDeploymentModal({
           </label>
         )}
 
-        {!workspace && <div className="id-manage-error" role="alert">Update Möbius to choose a Railway workspace.</div>}
+        {!workspace && (
+          <div className="id-manage-error" role="alert">
+            {workspaces?.length === 0
+              ? 'Railway did not share a workspace. Reconnect Railway and share one.'
+              : 'Update Möbius to choose a Railway workspace.'}
+          </div>
+        )}
         {blocked && <div className="id-manage-error" role="alert">{blocked}</div>}
         {error && <div className="id-signin-error" role="alert">{error}</div>}
 
@@ -2489,7 +2504,7 @@ export default function App({ appId, token }) {
     try {
       const plans = await identityRequest(token, '/railway/workspace-plans')
       if (plansSequenceRef.current === sequence) {
-        setWorkspacePlans(plans.workspaces.length ? plans : null)
+        setWorkspacePlans(plans)
         setPlansSettled(true)
       }
     } catch (requestError) {

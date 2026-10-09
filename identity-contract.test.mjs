@@ -504,6 +504,14 @@ test('the header and banner describe the workspaces that matter', async () => {
   assert.match(source, /workspaceList\?\.length === 1 && planTitle\(workspaceList\[0\]\.plan\)/)
 })
 
+test('zero shared workspaces get their own notice, not the update notice', async () => {
+  const source = await readFile(new URL('./index.jsx', import.meta.url), 'utf8')
+  assert.match(source, /const noWorkspaces = Boolean\(plansSettled\) && workspaceList\?\.length === 0/)
+  assert.match(source, /Railway did not share a workspace\./)
+  assert.match(source, /disabled=\{!workspaceList\?\.length\}/)
+  assert.match(source, /setWorkspacePlans\(plans\)/)
+})
+
 test('a deployment may name its workspace, and a malformed value only loses that', () => {
   const base = {
     id: 'mob_abc', name: 'A', status: 'ready', url: null, railway_url: null,
