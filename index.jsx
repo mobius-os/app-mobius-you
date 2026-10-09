@@ -277,10 +277,16 @@ function ProfileAvatar({ profile, token }) {
 
 /* The identity "membership card": a tactile dark card with an iridescent edge.
    On pointer devices it tilts toward the cursor and its sheen follows; on
-   touch devices it floats gently on its own. Reduced motion disables both. */
+   touch devices it floats gently for a few seconds after it appears or is
+   touched, then rests. Reduced motion disables both. */
+// Each float frame repaints the masked conic-gradient sheen, so the float is
+// a brief flourish rather than a continuous loop, and never runs while hidden.
+const FLOAT_MS = 6000
+
 function IdentityCard({ children, footer }) {
   const cardRef = useRef(null)
   const motionRef = useRef({ hover: false, reduced: false })
+  const floatRef = useRef(null)
 
   useEffect(() => {
     const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches
@@ -289,13 +295,39 @@ function IdentityCard({ children, footer }) {
     const card = cardRef.current
     if (!card || reduced || hover) return undefined
     let t = 0
-    const timer = setInterval(() => {
-      t += 0.02
-      card.style.transform =
-        `rotateX(${(Math.sin(t) * 2.6).toFixed(2)}deg) rotateY(${(Math.cos(t * 0.8) * 3.2).toFixed(2)}deg)`
-      card.style.setProperty('--id-holo', `${(210 + Math.sin(t * 0.6) * 60).toFixed(0)}deg`)
-    }, 50)
-    return () => clearInterval(timer)
+    let timer = null
+    let stopAt = 0
+    const stop = () => {
+      if (timer !== null) clearInterval(timer)
+      timer = null
+    }
+    const float = () => {
+      if (document.visibilityState === 'hidden') return
+      stopAt = Date.now() + FLOAT_MS
+      if (timer !== null) return
+      timer = setInterval(() => {
+        if (Date.now() >= stopAt || document.visibilityState === 'hidden') {
+          stop()
+          return
+        }
+        t += 0.02
+        card.style.transform =
+          `rotateX(${(Math.sin(t) * 2.6).toFixed(2)}deg) rotateY(${(Math.cos(t * 0.8) * 3.2).toFixed(2)}deg)`
+        card.style.setProperty('--id-holo', `${(210 + Math.sin(t * 0.6) * 60).toFixed(0)}deg`)
+      }, 50)
+    }
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') stop()
+      else float()
+    }
+    floatRef.current = float
+    float()
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => {
+      floatRef.current = null
+      stop()
+      document.removeEventListener('visibilitychange', onVisibility)
+    }
   }, [])
 
   const onMove = event => {
@@ -318,7 +350,7 @@ function IdentityCard({ children, footer }) {
   }
 
   return (
-    <div className="id-tilt-zone" onPointerMove={onMove} onPointerLeave={onLeave}>
+    <div className="id-tilt-zone" onPointerMove={onMove} onPointerLeave={onLeave} onPointerDown={() => floatRef.current?.()}>
       <div className="id-card-3d" ref={cardRef}>
         <div className="id-cardhead">
           <span className="id-cardword">Möbius · You</span>
