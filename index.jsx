@@ -1174,6 +1174,8 @@ function NewDeploymentModal({
   const workspace = workspacePlans?.workspaces.find(item => item.id === workspaceId)
   const planLimits = workspace ? workspace.plan_limits : connectionLimits
   const plan = workspace ? workspace.plan : connectionPlan
+  // Shown as a notice only: it can be minutes old, and creating re-checks the
+  // plan live, so the owner is never blocked by stale data after fixing billing.
   const blocked = workspace?.deploy_blocked || ''
   const [cpu, setCpu] = useState(() => resourceDefaults(planLimits).cpu)
   const [memory, setMemory] = useState(() => resourceDefaults(planLimits).memory)
@@ -1190,7 +1192,7 @@ function NewDeploymentModal({
 
   const submit = async event => {
     event.preventDefault()
-    if (!name.trim() || blocked || pending) return
+    if (!name.trim() || pending) return
     setPending(true)
     setError('')
     try {
@@ -1386,7 +1388,7 @@ function NewDeploymentModal({
             <button type="button" className="id-btn" disabled={pending} onClick={onClose}>
               Cancel
             </button>
-            <button type="submit" className="id-btn id-btn--primary id-deploy-btn" disabled={!name.trim() || Boolean(blocked) || pending}>
+            <button type="submit" className="id-btn id-btn--primary id-deploy-btn" disabled={!name.trim() || pending}>
               {pending ? 'Deploying…' : <><WandIcon width={16} /> Deploy Möbius</>}
             </button>
           </div>

@@ -258,7 +258,7 @@ components:
       properties:
         id: { type: string, minLength: 1, maxLength: 128 }
         name: { type: string, minLength: 1, maxLength: 128 }
-        plan: { type: string, enum: [trial, free, hobby, pro, unknown] }
+        plan: { type: string, enum: [trial, free, hobby, pro, enterprise, unknown] }
         deploy_blocked: { type: string, maxLength: 1000 }
         plan_limits: { $ref: '#/components/schemas/RailwayPlanLimits' }
     RailwayPlanLimits:

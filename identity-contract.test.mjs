@@ -440,7 +440,7 @@ test('validates per-workspace plan data strictly', () => {
   const entry = (id, patch = {}) => ({
     id, name: `Workspace ${id}`, plan: 'hobby', deploy_blocked: '', plan_limits: limits, ...patch,
   })
-  const valid = { workspaces: [entry('a'), entry('b', { plan: 'unknown' })], current: 'b' }
+  const valid = { workspaces: [entry('a'), entry('b', { plan: 'unknown' }), entry('c', { plan: 'enterprise' })], current: 'b' }
   assert.equal(parseWorkspacePlans(valid), valid)
   const nullCurrent = { workspaces: [], current: null }
   assert.equal(parseWorkspacePlans(nullCurrent), nullCurrent)
@@ -456,7 +456,7 @@ test('validates per-workspace plan data strictly', () => {
     { ...valid, workspaces: [entry('a', { id: 7 })] },
     { ...valid, workspaces: [entry('')] },
     { ...valid, workspaces: [entry('a', { name: '' })] },
-    { ...valid, workspaces: [entry('a', { plan: 'enterprise' })] },
+    { ...valid, workspaces: [entry('a', { plan: 'platinum' })] },
     { ...valid, workspaces: [entry('a', { deploy_blocked: null })] },
     { ...valid, workspaces: [entry('a', { plan_limits: { ...limits, max_cpu: '4' } })] },
     { ...valid, workspaces: [entry('a', { plan_limits: null })] },
@@ -477,6 +477,9 @@ test('the create form owns the workspace only when workspace plans are advertise
   assert.match(source, /if \(workspace\) settings\.workspace_id = workspace\.id/)
   assert.match(source, /workspaceChosenOnCreate=\{Boolean\(workspacePlans\)\}/)
   assert.match(source, /workspaces\.length > 1 && !workspaceChosenOnCreate/)
+  // A possibly stale blocked notice never disables creating: the launcher re-checks live.
+  assert.doesNotMatch(source, /Boolean\(blocked\)/)
+  assert.doesNotMatch(source, /!name\.trim\(\) \|\| blocked/)
 })
 
 test('opts into region choices through the platform inventory bridge', async () => {

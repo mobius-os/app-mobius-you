@@ -361,7 +361,7 @@ function validPlanLimits(value) {
     && Number.isInteger(value.default_volume_mb) && value.default_volume_mb > 0
 }
 
-const WORKSPACE_PLANS = ['trial', 'free', 'hobby', 'pro', 'unknown']
+const WORKSPACE_PLANS = ['trial', 'free', 'hobby', 'pro', 'enterprise', 'unknown']
 
 function validWorkspacePlan(item) {
   return exactKeys(item, ['id', 'name', 'plan', 'deploy_blocked', 'plan_limits'])
