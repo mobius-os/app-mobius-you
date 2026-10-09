@@ -72,7 +72,9 @@ async function identityRequest(token, path = '', options = {}) {
   }
   if (path === '/link/start') return parseLinkAttempt(body)
   if (path === '/agent' || path === '/agent/trial') return parseAgentAccess(body)
-  if (path === '/railway') return parseRailway(body)
+  // Query strings select optional fields; the route is what picks the contract.
+  const route = path.split('?')[0]
+  if (route === '/railway') return parseRailway(body)
   if (path === '/railway/workspace-plans') return parseWorkspacePlans(body)
   if (/^\/railway\/deployments\/[^/]+\/deletion$/.test(path)) {
     return parseDeletionDiagnosis(body)
@@ -752,6 +754,8 @@ function Deployments({
   railway,
   workspacePlans,
   plansSettled,
+  plansFailed,
+  onRetryPlans,
   selfHosted,
   onNew,
   onManage,
@@ -786,7 +790,8 @@ function Deployments({
   const blockedWorkspaces = (workspaceList || []).filter(item => item.deploy_blocked
     && (!severalWorkspaces
       || (railway?.instances || []).some(instance => instance.workspace_id === item.id)))
-  const plansMissing = Boolean(plansSettled) && !workspaceList
+  const plansMissing = Boolean(plansSettled) && !workspaceList && !plansFailed
+  const plansUnreachable = Boolean(plansSettled) && !workspaceList && Boolean(plansFailed)
   const noWorkspaces = Boolean(plansSettled) && workspaceList?.length === 0
   const deploymentOrigin = value => {
     try {
@@ -863,6 +868,15 @@ function Deployments({
             <strong>Railway controls are temporarily unavailable</strong>
             <span>Your confirmed deployment links remain below.</span>
           </div>
+        </div>
+      )}
+      {connected && plansUnreachable && (
+        <div className="id-railway-callout">
+          <div>
+            <strong>Could not load your Railway workspaces.</strong>
+            <span>Railway may be unreachable. Existing deployments keep working.</span>
+          </div>
+          <button type="button" className="id-btn" onClick={onRetryPlans}>Try again</button>
         </div>
       )}
       {connected && plansMissing && (
@@ -2450,6 +2464,7 @@ export default function App({ appId, token }) {
   const [railway, setRailway] = useState(null)
   const [workspacePlans, setWorkspacePlans] = useState(null)
   const [plansSettled, setPlansSettled] = useState(false)
+  const [plansFailed, setPlansFailed] = useState(false)
   const plansSequenceRef = useRef(0)
   const [railwayError, setRailwayError] = useState('')
   const [agentAccess, setAgentAccess] = useState(null)
@@ -2505,13 +2520,20 @@ export default function App({ appId, token }) {
       const plans = await identityRequest(token, '/railway/workspace-plans')
       if (plansSequenceRef.current === sequence) {
         setWorkspacePlans(plans)
+        setPlansFailed(false)
         setPlansSettled(true)
       }
     } catch (requestError) {
-      const transient = requestError instanceof TypeError
-        || (requestError instanceof IdentityRequestError && requestError.status >= 500)
+      // Only a definitive answer means the host predates the route: not
+      // supported, not connected, rejected, or a payload that does not parse.
+      // A network failure or a 5xx (Railway unreachable) is transient: keep any
+      // plans already held and offer a retry instead of asking for an update.
+      const definitive = !(requestError instanceof IdentityRequestError)
+        ? !(requestError instanceof TypeError)
+        : [404, 405, 409, 422].includes(requestError.status)
       if (plansSequenceRef.current === sequence) {
-        if (!transient) setWorkspacePlans(null)
+        if (definitive) setWorkspacePlans(null)
+        setPlansFailed(!definitive)
         setPlansSettled(true)
       }
     }
@@ -2544,6 +2566,7 @@ export default function App({ appId, token }) {
       setRailway(null)
       setWorkspacePlans(null)
       setPlansSettled(false)
+      setPlansFailed(false)
     }
     return () => {
       railwaySequenceRef.current += 1
@@ -2741,6 +2764,7 @@ export default function App({ appId, token }) {
           try { popup.close() } catch { /* already closed */ }
           setWorkspacePlans(null)
           setPlansSettled(false)
+          setPlansFailed(false)
           void loadWorkspacePlans()
           return next
         }
@@ -2917,6 +2941,8 @@ export default function App({ appId, token }) {
                 railway={railway}
                 workspacePlans={workspacePlans}
                 plansSettled={plansSettled}
+                plansFailed={plansFailed}
+                onRetryPlans={loadWorkspacePlans}
                 selfHosted={mode === 'linked'}
                 onNew={() => setCreatingDeployment(true)}
                 managingDeployment={managingDeployment}

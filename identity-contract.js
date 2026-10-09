@@ -363,6 +363,9 @@ function validPlanLimits(value) {
     && Number.isInteger(value.max_memory_mb) && value.max_memory_mb > 0
     && positiveIntList(value.volume_options_mb)
     && Number.isInteger(value.default_volume_mb) && value.default_volume_mb > 0
+    && (value.included_usd === null || (typeof value.included_usd === 'number' && value.included_usd >= 0))
+    && Number.isInteger(value.default_cpu) && value.default_cpu > 0
+    && Number.isInteger(value.default_memory_mb) && value.default_memory_mb > 0
 }
 
 const WORKSPACE_PLANS = ['trial', 'free', 'hobby', 'pro', 'enterprise', 'unknown']
