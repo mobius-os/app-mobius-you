@@ -467,14 +467,31 @@ test('validates per-workspace plan data strictly', () => {
     { ...valid, workspaces: [entry('a', { deploy_blocked: 'x'.repeat(1001) })] },
   ]
   for (const value of rejected) assert.throws(() => parseWorkspacePlans(value))
+  // Characters, not UTF-16 units: 128 emoji are 256 units and must be accepted.
+  const emoji = '\u{1F600}'
+  const wide = { workspaces: [entry('a', { name: emoji.repeat(128), deploy_blocked: emoji.repeat(1000) })], current: null }
+  assert.equal(parseWorkspacePlans(wide), wide)
+  assert.throws(() => parseWorkspacePlans({ workspaces: [entry('a', { name: emoji.repeat(129) })], current: null }))
+  assert.throws(() => parseWorkspacePlans({ workspaces: [entry('a', { deploy_blocked: emoji.repeat(1001) })], current: null }))
   const maximal = { workspaces: Array.from({ length: 100 }, (_, i) => entry(`w${i}`)), current: null }
   assert.equal(parseWorkspacePlans(maximal), maximal)
 })
 
 test('the create form owns the workspace only when workspace plans are advertised', async () => {
   const source = await readFile(new URL('./index.jsx', import.meta.url), 'utf8')
-  assert.match(source, /identityRequest\(token, '\/railway\/workspace-plans'\)\.catch\(\(\) => null\)/)
+  // Plans load after the deployments are shown, never from quiet polling.
+  assert.match(source, /identityRequest\(token, '\/railway\/workspace-plans'\)/)
+  assert.match(source, /if \(!quiet\) void loadWorkspacePlans\(\)/)
+  assert.doesNotMatch(source, /Promise\.all\(\[\s*identityRequest\(token, '\/railway\?region_options/)
+  // A transient failure keeps the plans held; a definitive one falls back to the legacy flow.
+  assert.match(source, /requestError instanceof TypeError/)
+  assert.match(source, /requestError\.status >= 500/)
+  assert.match(source, /if \(!transient && plansSequenceRef\.current === sequence\) setWorkspacePlans\(null\)/)
+  // The workspace in use is derived on every render, so it is always what is sent.
+  assert.match(source, /workspaces\.some\(item => item\.id === chosenWorkspaceId\)/)
   assert.match(source, /if \(workspace\) settings\.workspace_id = workspace\.id/)
+  // First connect and account change drop old plans and load the new account's.
+  assert.match(source, /setWorkspacePlans\(null\)\s+void loadWorkspacePlans\(\)/)
   assert.match(source, /workspaceChosenOnCreate=\{Boolean\(workspacePlans\)\}/)
   assert.match(source, /workspaces\.length > 1 && !workspaceChosenOnCreate/)
   // A possibly stale blocked notice never disables creating: the launcher re-checks live.

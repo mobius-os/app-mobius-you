@@ -367,17 +367,22 @@ function validPlanLimits(value) {
 
 const WORKSPACE_PLANS = ['trial', 'free', 'hobby', 'pro', 'enterprise', 'unknown']
 
+// Lengths are counted in characters (code points), as the account service and
+// the platform count them; String.length counts UTF-16 units and would reject a
+// 128-emoji name they accept.
+const characters = value => [...value].length
+
 function validWorkspacePlan(item) {
   return exactKeys(item, ['id', 'name', 'plan', 'deploy_blocked', 'plan_limits'])
     && typeof item.id === 'string'
-    && item.id.length > 0
-    && item.id.length <= 128
+    && characters(item.id) > 0
+    && characters(item.id) <= 128
     && typeof item.name === 'string'
-    && item.name.length > 0
-    && item.name.length <= 128
+    && characters(item.name) > 0
+    && characters(item.name) <= 128
     && WORKSPACE_PLANS.includes(item.plan)
     && typeof item.deploy_blocked === 'string'
-    && item.deploy_blocked.length <= 1000
+    && characters(item.deploy_blocked) <= 1000
     && validPlanLimits(item.plan_limits)
 }
 
@@ -392,7 +397,7 @@ export function parseWorkspacePlans(value) {
     || !value.workspaces.every(validWorkspacePlan)
     || new Set(value.workspaces.map(item => item.id)).size !== value.workspaces.length
     || !(value.current === null
-      || (typeof value.current === 'string' && value.current.length > 0 && value.current.length <= 128))
+      || (typeof value.current === 'string' && characters(value.current) > 0 && characters(value.current) <= 128))
   ) throw new Error('Möbius returned invalid Railway workspace plans.')
   return value
 }

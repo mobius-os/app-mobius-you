@@ -182,10 +182,18 @@ paths:
               type: object
               required: [name]
               properties:
-                name: { type: string }
+                name: { type: string, minLength: 1, maxLength: 80 }
+                managed_auth: { type: boolean }
+                cpu: { type: [integer, 'null'] }
+                memory_mb: { type: [integer, 'null'] }
+                volume_mb: { type: [integer, 'null'] }
+                update_policy: { type: string, enum: [automatic, manual] }
+                region: { type: string }
                 workspace_id: { type: string, minLength: 1, maxLength: 128 }
       responses:
+        '202': { description: The deployment was queued. }
         '401': { $ref: '#/components/responses/Unauthenticated' }
+        '422': { description: A field is invalid, for example a blank workspace_id. }
 components:
   securitySchemes:
     appBearer:
@@ -280,7 +288,7 @@ components:
         plan_limits: { $ref: '#/components/schemas/RailwayPlanLimits' }
     RailwayPlanLimits:
       type: object
-      required: [cpu_choices, max_cpu, memory_options_mb, max_memory_mb, volume_options_mb, default_volume_mb]
+      required: [cpu_choices, max_cpu, default_cpu, memory_options_mb, max_memory_mb, default_memory_mb, volume_options_mb, default_volume_mb, included_usd]
       properties:
         cpu_choices: { type: array, items: { type: integer, minimum: 1 } }
         max_cpu: { type: integer, minimum: 1 }

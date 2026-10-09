@@ -1206,12 +1206,19 @@ function NewDeploymentModal({
   const [managedAuth, setManagedAuth] = useState(true)
   // With workspacePlans the form owns the workspace choice; limits, plan and
   // blocked notice then come from the selected workspace, not the connection.
-  const [workspaceId, setWorkspaceId] = useState(() => {
-    if (!workspacePlans) return ''
-    const { workspaces, current } = workspacePlans
-    return workspaces.some(item => item.id === current) ? current : workspaces[0].id
-  })
-  const workspace = workspacePlans?.workspaces.find(item => item.id === workspaceId)
+  // The workspace in use is derived on every render: plans can arrive after the
+  // modal opened, or a reload can drop the chosen one, and what is shown must
+  // always be what gets sent.
+  const [chosenWorkspaceId, setChosenWorkspaceId] = useState('')
+  const workspaces = workspacePlans?.workspaces
+  const workspaceId = workspaces?.length
+    ? (workspaces.some(item => item.id === chosenWorkspaceId)
+      ? chosenWorkspaceId
+      : (workspaces.some(item => item.id === workspacePlans.current)
+        ? workspacePlans.current
+        : workspaces[0].id))
+    : ''
+  const workspace = workspaces?.find(item => item.id === workspaceId)
   const planLimits = workspace ? workspace.plan_limits : connectionLimits
   const plan = workspace ? workspace.plan : connectionPlan
   // Shown as a notice only: it can be minutes old, and creating re-checks the
@@ -1220,6 +1227,17 @@ function NewDeploymentModal({
   const [cpu, setCpu] = useState(() => resourceDefaults(planLimits).cpu)
   const [memory, setMemory] = useState(() => resourceDefaults(planLimits).memory)
   const [volume, setVolume] = useState(() => resourceDefaults(planLimits).volume)
+  // Another workspace brings its own plan: start its resource choices from that
+  // plan's defaults (not on first render, which already used them).
+  const shownWorkspaceRef = useRef(workspaceId)
+  useEffect(() => {
+    if (shownWorkspaceRef.current === workspaceId) return
+    shownWorkspaceRef.current = workspaceId
+    const defaults = resourceDefaults(planLimits)
+    setCpu(defaults.cpu)
+    setMemory(defaults.memory)
+    setVolume(defaults.volume)
+  }, [workspaceId, planLimits])
   const [region, setRegion] = useState(() => {
     const zone = Intl.DateTimeFormat().resolvedOptions().timeZone || ''
     const suggestion = suggestRailwayRegion(zone, -new Date().getTimezoneOffset())
@@ -1252,14 +1270,6 @@ function NewDeploymentModal({
     } finally {
       setPending(false)
     }
-  }
-
-  const chooseWorkspace = id => {
-    const defaults = resourceDefaults(workspacePlans.workspaces.find(item => item.id === id).plan_limits)
-    setWorkspaceId(id)
-    setCpu(defaults.cpu)
-    setMemory(defaults.memory)
-    setVolume(defaults.volume)
   }
 
   const planName = planTitle(plan)
@@ -1327,11 +1337,11 @@ function NewDeploymentModal({
           )}
         </div>
 
-        {workspacePlans?.workspaces.length > 1 && (
+        {workspaces?.length > 1 && (
           <label className="id-field-block">
             <span className="id-label">Railway workspace</span>
-            <select className="id-select" value={workspaceId} disabled={pending} onChange={event => chooseWorkspace(event.target.value)}>
-              {workspacePlans.workspaces.map(item => (
+            <select className="id-select" value={workspaceId} disabled={pending} onChange={event => setChosenWorkspaceId(event.target.value)}>
+              {workspaces.map(item => (
                 <option key={item.id} value={item.id}>{item.name}</option>
               ))}
             </select>
@@ -1417,7 +1427,7 @@ function NewDeploymentModal({
           </label>
         )}
 
-        {blocked && <div className="id-manage-error">{blocked}</div>}
+        {blocked && <div className="id-manage-error" role="alert">{blocked}</div>}
         {error && <div className="id-signin-error" role="alert">{error}</div>}
 
         <div className="id-composer-foot">
@@ -2153,7 +2163,7 @@ function RailwayConnectionModal({
              fetch. It upgrades to an interactive picker only if more than one
              workspace is authorized and new deployments do not choose their own. */}
           <div className="id-connection-fact">
-            <span className="id-label">Workspace</span>
+            <span className="id-label">{workspaceChosenOnCreate ? 'Default workspace' : 'Workspace'}</span>
             {workspaces.length > 1 && !workspaceChosenOnCreate ? (
               <select
                 className="id-select"
@@ -2467,6 +2477,7 @@ export default function App({ appId, token }) {
   const [data, setData] = useState(null)
   const [railway, setRailway] = useState(null)
   const [workspacePlans, setWorkspacePlans] = useState(null)
+  const plansSequenceRef = useRef(0)
   const [railwayError, setRailwayError] = useState('')
   const [agentAccess, setAgentAccess] = useState(null)
   const [agentError, setAgentError] = useState('')
@@ -2511,21 +2522,34 @@ export default function App({ appId, token }) {
     return () => { loadSequenceRef.current += 1 }
   }, [load])
 
+  // Older platforms and launchers lack the workspace-plans route: a definitive
+  // failure of it (not supported, not connected, malformed) keeps the legacy
+  // connection-wide workspace flow. A transient one (network, 5xx) keeps the
+  // plans already held, so the form never changes target mid-session.
+  const loadWorkspacePlans = useCallback(async () => {
+    const sequence = ++plansSequenceRef.current
+    try {
+      const plans = await identityRequest(token, '/railway/workspace-plans')
+      if (plansSequenceRef.current === sequence) {
+        setWorkspacePlans(plans.workspaces.length ? plans : null)
+      }
+    } catch (requestError) {
+      const transient = requestError instanceof TypeError
+        || (requestError instanceof IdentityRequestError && requestError.status >= 500)
+      if (!transient && plansSequenceRef.current === sequence) setWorkspacePlans(null)
+    }
+  }, [token])
+
   const loadRailway = useCallback(async ({ quiet = false } = {}) => {
     const sequence = ++railwaySequenceRef.current
     if (!quiet) setRailwayError('')
     try {
-      // Older platforms and launchers lack the workspace-plans route; any
-      // failure of it keeps the legacy connection-wide workspace flow. Quiet
-      // polling keeps the plans it has: they cost the launcher a Railway lookup
-      // and creating re-checks the plan live anyway.
-      const [next, plans] = await Promise.all([
-        identityRequest(token, '/railway?region_options=1&workspace_ids=1'),
-        quiet ? null : identityRequest(token, '/railway/workspace-plans').catch(() => null),
-      ])
+      const next = await identityRequest(token, '/railway?region_options=1&workspace_ids=1')
       if (railwaySequenceRef.current === sequence) {
         setRailway(next)
-        if (!quiet) setWorkspacePlans(plans?.workspaces.length ? plans : null)
+        // Plans cost the launcher Railway lookups, so they load after the
+        // deployments are on screen and never from quiet polling.
+        if (!quiet) void loadWorkspacePlans()
       }
       return next
     } catch (requestError) {
@@ -2534,7 +2558,7 @@ export default function App({ appId, token }) {
       }
       return null
     }
-  }, [token])
+  }, [token, loadWorkspacePlans])
 
   useEffect(() => {
     if (data?.account_mode === 'linked' || data?.account_mode === 'managed') {
@@ -2543,7 +2567,10 @@ export default function App({ appId, token }) {
       setRailway(null)
       setWorkspacePlans(null)
     }
-    return () => { railwaySequenceRef.current += 1 }
+    return () => {
+      railwaySequenceRef.current += 1
+      plansSequenceRef.current += 1
+    }
   }, [data?.account_mode, loadRailway])
 
   const loadAgent = useCallback(async ({ quiet = false } = {}) => {
@@ -2734,6 +2761,8 @@ export default function App({ appId, token }) {
         const next = await loadRailway({ quiet: true })
         if (replace ? railwayAccountChanged(previousAccount, next) : next?.connection?.connected) {
           try { popup.close() } catch { /* already closed */ }
+          setWorkspacePlans(null)
+          void loadWorkspacePlans()
           return next
         }
         if (popup.closed) {
