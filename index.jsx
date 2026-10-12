@@ -754,7 +754,7 @@ function Deployments({
   railway,
   workspacePlans,
   plansSettled,
-  plansFailed,
+  plansFailure,
   onRetryPlans,
   selfHosted,
   onNew,
@@ -790,8 +790,8 @@ function Deployments({
   const blockedWorkspaces = (workspaceList || []).filter(item => item.deploy_blocked
     && (!severalWorkspaces
       || (railway?.instances || []).some(instance => instance.workspace_id === item.id)))
-  const plansMissing = Boolean(plansSettled) && !workspaceList && !plansFailed
-  const plansUnreachable = Boolean(plansSettled) && !workspaceList && Boolean(plansFailed)
+  const plansMissing = Boolean(plansSettled) && !workspaceList && !plansFailure
+  const plansUnreachable = Boolean(plansSettled) && !workspaceList && Boolean(plansFailure)
   const noWorkspaces = Boolean(plansSettled) && workspaceList?.length === 0
   const deploymentOrigin = value => {
     try {
@@ -874,7 +874,7 @@ function Deployments({
         <div className="id-railway-callout">
           <div>
             <strong>Could not load your Railway workspaces.</strong>
-            <span>Railway may be unreachable. Existing deployments keep working.</span>
+            <span>{plansFailure} Existing deployments keep working.</span>
           </div>
           <button type="button" className="id-btn" onClick={onRetryPlans}>Try again</button>
         </div>
@@ -1914,7 +1914,7 @@ function ManageDeploymentPanel({
               />
             ) : (
               <div className="id-resource-fields">
-                <p className="id-storage-limit-note">Plan limits are unavailable until the deployment's workspace is known.</p>
+                <p className="id-storage-limit-note">Plan limits are unavailable right now.</p>
                 <label className="id-field-block">
                   <span className="id-label">CPU</span>
                   <input
@@ -2464,7 +2464,7 @@ export default function App({ appId, token }) {
   const [railway, setRailway] = useState(null)
   const [workspacePlans, setWorkspacePlans] = useState(null)
   const [plansSettled, setPlansSettled] = useState(false)
-  const [plansFailed, setPlansFailed] = useState(false)
+  const [plansFailure, setPlansFailure] = useState('')
   const plansSequenceRef = useRef(0)
   const [railwayError, setRailwayError] = useState('')
   const [agentAccess, setAgentAccess] = useState(null)
@@ -2520,20 +2520,19 @@ export default function App({ appId, token }) {
       const plans = await identityRequest(token, '/railway/workspace-plans')
       if (plansSequenceRef.current === sequence) {
         setWorkspacePlans(plans)
-        setPlansFailed(false)
+        setPlansFailure('')
         setPlansSettled(true)
       }
     } catch (requestError) {
-      // Only a definitive answer means the host predates the route: not
-      // supported, not connected, rejected, or a payload that does not parse.
-      // A network failure or a 5xx (Railway unreachable) is transient: keep any
-      // plans already held and offer a retry instead of asking for an update.
+      // Only "no such route" or a payload that does not parse means the host
+      // predates the route. Anything else (a network failure, Railway
+      // unreachable, or a sign-in/reconnect answer such as 401/409) says what
+      // the host said and offers a retry, keeping any plans already held.
       const definitive = !(requestError instanceof IdentityRequestError)
-        ? !(requestError instanceof TypeError)
-        : [404, 405, 409, 422].includes(requestError.status)
+        || [404, 405].includes(requestError.status)
       if (plansSequenceRef.current === sequence) {
         if (definitive) setWorkspacePlans(null)
-        setPlansFailed(!definitive)
+        setPlansFailure(definitive ? '' : requestError.message)
         setPlansSettled(true)
       }
     }
@@ -2566,7 +2565,7 @@ export default function App({ appId, token }) {
       setRailway(null)
       setWorkspacePlans(null)
       setPlansSettled(false)
-      setPlansFailed(false)
+      setPlansFailure('')
     }
     return () => {
       railwaySequenceRef.current += 1
@@ -2764,7 +2763,7 @@ export default function App({ appId, token }) {
           try { popup.close() } catch { /* already closed */ }
           setWorkspacePlans(null)
           setPlansSettled(false)
-          setPlansFailed(false)
+          setPlansFailure('')
           void loadWorkspacePlans()
           return next
         }
@@ -2941,7 +2940,7 @@ export default function App({ appId, token }) {
                 railway={railway}
                 workspacePlans={workspacePlans}
                 plansSettled={plansSettled}
-                plansFailed={plansFailed}
+                plansFailure={plansFailure}
                 onRetryPlans={loadWorkspacePlans}
                 selfHosted={mode === 'linked'}
                 onNew={() => setCreatingDeployment(true)}
@@ -3038,7 +3037,9 @@ export default function App({ appId, token }) {
         {creatingDeployment && (
           <NewDeploymentModal
             workspacePlans={workspacePlans}
-            preferredWorkspaceId={railway?.instances.find(instance => instance.workspace_id)?.workspace_id}
+            preferredWorkspaceId={railway?.instances.find(
+              instance => instance.workspace_id && instance.status !== 'deleting',
+            )?.workspace_id}
             regionOptions={railway?.connection?.region_options}
             onClose={() => setCreatingDeployment(false)}
             onCreate={payload => railwayAction('/deployments', {

@@ -391,11 +391,11 @@ function validWorkspacePlan(item) {
 
 // Per-workspace plan data that lets the create form choose a workspace itself.
 // Strict: any failure means the platform or launcher predates the route, and
-// the caller asks the owner to update. `current` was a saved default workspace
-// that older launchers still send; it is tolerated and never read.
+// the caller asks the owner to update. The platform bridge forwards only
+// `workspaces`; there is no saved default workspace.
 export function parseWorkspacePlans(value) {
   if (
-    !exactKeys(value, ['workspaces'], ['current'])
+    !exactKeys(value, ['workspaces'])
     || !Array.isArray(value.workspaces)
     || value.workspaces.length > 100
     || !value.workspaces.every(validWorkspacePlan)

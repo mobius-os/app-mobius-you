@@ -425,11 +425,9 @@ test('validates per-workspace plan data strictly', () => {
     assert.throws(() => parseWorkspacePlans({ workspaces: [entry('a', { plan_limits: { ...limits, ...patch } })] }), /invalid Railway workspace plans/)
   }
   assert.doesNotThrow(() => parseWorkspacePlans({ workspaces: [entry('a', { plan_limits: { ...limits, included_usd: null } })] }))
-  // `current` (the old saved default) is optional: an older launcher may still send it, never read.
-  const withCurrent = { ...valid, current: 'b' }
-  assert.equal(parseWorkspacePlans(withCurrent), withCurrent)
-  const nullCurrent = { workspaces: [], current: null }
-  assert.equal(parseWorkspacePlans(nullCurrent), nullCurrent)
+  // There is no saved default workspace: a `current` key is not part of the contract.
+  assert.throws(() => parseWorkspacePlans({ ...valid, current: 'b' }))
+  assert.throws(() => parseWorkspacePlans({ workspaces: [], current: null }))
 
   const rejected = [
     { ...valid, extra: true },
@@ -468,8 +466,14 @@ test('the create form owns the workspace and always sends it', async () => {
   assert.match(source, /if \(!quiet\) void loadWorkspacePlans\(\)/)
   assert.doesNotMatch(source, /Promise\.all\(\[\s*identityRequest\(token, '\/railway\?region_options/)
   // A transient failure keeps the plans held; a definitive one clears them.
-  assert.match(source, /requestError instanceof TypeError/)
-  assert.match(source, /\[404, 405, 409, 422\]\.includes\(requestError\.status\)/)
+  // Only a missing route or an unparseable payload asks for an update; a sign-in or
+  // reconnect answer (401/409) and an outage show what the host said, with a retry.
+  assert.match(source, /\[404, 405\]\.includes\(requestError\.status\)/)
+  assert.doesNotMatch(source, /\[404, 405, 409, 422\]/)
+  assert.match(source, /setPlansFailure\(definitive \? '' : requestError\.message\)/)
+  assert.match(source, /<span>\{plansFailure\} Existing deployments keep working\.<\/span>/)
+  // The starting workspace skips a deployment that is being deleted, like the website.
+  assert.match(source, /instance\.workspace_id && instance\.status !== 'deleting'/)
   assert.match(source, /if \(definitive\) setWorkspacePlans\(null\)/)
   assert.match(source, /const route = path\.split\(.\?.\)\[0\]/)
   assert.match(source, /Could not load your Railway workspaces/)
@@ -478,9 +482,8 @@ test('the create form owns the workspace and always sends it', async () => {
   assert.match(source, /\.find\(Boolean\) \|\| workspaces\?\.\[0\]/)
   assert.match(source, /settings\.workspace_id = workspace\.id/)
   assert.doesNotMatch(source, /if \(workspace\) settings\.workspace_id/)
-  assert.match(source, /preferredWorkspaceId=\{railway\?\.instances\.find\(instance => instance\.workspace_id\)\?\.workspace_id\}/)
   // First connect and account change drop old plans and load the new account's.
-  assert.match(source, /setWorkspacePlans\(null\)\s+setPlansSettled\(false\)\s+setPlansFailed\(false\)\s+void loadWorkspacePlans\(\)/)
+  assert.match(source, /setWorkspacePlans\(null\)\s+setPlansSettled\(false\)\s+setPlansFailure\(''\)\s+void loadWorkspacePlans\(\)/)
   // A possibly stale blocked notice never disables creating: the launcher re-checks live.
   assert.doesNotMatch(source, /Boolean\(blocked\)/)
   assert.doesNotMatch(source, /!name\.trim\(\) \|\| blocked/)

@@ -287,9 +287,6 @@ components:
           type: array
           maxItems: 100
           items: { $ref: '#/components/schemas/RailwayWorkspacePlan' }
-        current:
-          description: Older launchers still send a saved default workspace id. It is ignored.
-          anyOf: [{ type: string, minLength: 1, maxLength: 128 }, { type: 'null' }]
     RailwayWorkspacePlan:
       type: object
       additionalProperties: false
