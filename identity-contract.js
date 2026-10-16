@@ -50,6 +50,24 @@ export function suggestRailwayRegion(zone, offsetMinutes) {
   return ''
 }
 
+export const DEFAULT_DEPLOYMENT_NAME = 'My Möbius'
+
+// A deployment's name is also its Railway project's name, and the launcher
+// refuses a name another project in the workspace already has. The create form
+// therefore starts from the first default none of the owner's deployments
+// uses, instead of one that would be refused on the second create.
+export function suggestDeploymentName(instances) {
+  const taken = new Set(
+    (Array.isArray(instances) ? instances : [])
+      .map(instance => String(instance?.name ?? '').trim().toLowerCase()),
+  )
+  let name = DEFAULT_DEPLOYMENT_NAME
+  for (let number = 2; taken.has(name.toLowerCase()); number += 1) {
+    name = `${DEFAULT_DEPLOYMENT_NAME} ${number}`
+  }
+  return name
+}
+
 const DELETE_CONFIRMATION_FALLBACK = (
   "Möbius couldn't confirm whether Railway removed this project. "
   + 'Try deleting again, or open Railway to check.'

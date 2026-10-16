@@ -17,6 +17,7 @@ import {
   parseRailway,
   parseWorkspacePlans,
   railwayAccountChanged,
+  suggestDeploymentName,
   suggestRailwayRegion,
   waitForAccountLink,
 } from './identity-contract.js'
@@ -882,4 +883,23 @@ test('parseIdentity requires the current member_since date', () => {
   assert.throws(() => parseIdentity({ ...base, linked_at: '2026-08-23T17:00:00Z' }))
   assert.throws(() => parseIdentity({ ...base, member_since: 'not-a-date' }))
   assert.throws(() => parseIdentity({ ...base, member_since: 12345 }))
+})
+
+test('the create form starts from a name none of the owner\'s deployments has', () => {
+  const named = (...names) => names.map(name => ({ name }))
+  assert.equal(suggestDeploymentName([]), 'My Möbius')
+  assert.equal(suggestDeploymentName(undefined), 'My Möbius')
+  assert.equal(suggestDeploymentName(named('My Möbius')), 'My Möbius 2')
+  // Case and surrounding space do not make a name different, as for the launcher.
+  assert.equal(suggestDeploymentName(named(' my möbius ', 'MY MÖBIUS 2')), 'My Möbius 3')
+  // Only the default's own sequence is skipped, and a free first name is kept.
+  assert.equal(suggestDeploymentName(named('Notes', 'My Möbius 2')), 'My Möbius')
+  assert.equal(suggestDeploymentName([{}, null, { name: 7 }]), 'My Möbius')
+})
+
+test('the create modal starts from the suggested name and is given the deployments', async () => {
+  const source = await readFile(new URL('./index.jsx', import.meta.url), 'utf8')
+  assert.match(source, /useState\(\(\) => suggestDeploymentName\(deployments\)\)/)
+  assert.match(source, /deployments=\{railway\?\.instances\}/)
+  assert.doesNotMatch(source, /useState\('My Möbius'\)/)
 })

@@ -35,6 +35,7 @@ import {
   parseRailway,
   parseWorkspacePlans,
   railwayAccountChanged,
+  suggestDeploymentName,
   suggestRailwayRegion,
   waitForAccountLink,
 } from './identity-contract.js'
@@ -1248,9 +1249,9 @@ function resourceDefaults(limits) {
 // launch summary, resources, and access tucked behind Advanced settings, plus
 // a Deploy Möbius action. Container updates stay in the normal Settings flow.
 function NewDeploymentModal({
-  onClose, onCreate, workspacePlans, preferredWorkspaceId, regionOptions,
+  onClose, onCreate, workspacePlans, preferredWorkspaceId, regionOptions, deployments,
 }) {
-  const [name, setName] = useState('My Möbius')
+  const [name, setName] = useState(() => suggestDeploymentName(deployments))
   const [managedAuth, setManagedAuth] = useState(true)
   // The form owns the workspace choice; limits, plan and blocked notice come
   // from the selected workspace. The workspace in use is derived on every
@@ -3041,6 +3042,7 @@ export default function App({ appId, token }) {
               instance => instance.workspace_id && instance.status !== 'deleting',
             )?.workspace_id}
             regionOptions={railway?.connection?.region_options}
+            deployments={railway?.instances}
             onClose={() => setCreatingDeployment(false)}
             onCreate={payload => railwayAction('/deployments', {
               method: 'POST',
