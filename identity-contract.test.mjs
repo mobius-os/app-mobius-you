@@ -17,6 +17,7 @@ import {
   parseRailway,
   parseWorkspacePlans,
   railwayAccountChanged,
+  suggestDeploymentName,
   suggestRailwayRegion,
   waitForAccountLink,
 } from './identity-contract.js'
@@ -882,4 +883,41 @@ test('parseIdentity requires the current member_since date', () => {
   assert.throws(() => parseIdentity({ ...base, linked_at: '2026-08-23T17:00:00Z' }))
   assert.throws(() => parseIdentity({ ...base, member_since: 'not-a-date' }))
   assert.throws(() => parseIdentity({ ...base, member_since: 12345 }))
+})
+
+test('the create form starts from a name none of the owner\'s deployments has', () => {
+  const named = (...names) => names.map(name => ({ name }))
+  assert.equal(suggestDeploymentName([]), 'My Möbius')
+  assert.equal(suggestDeploymentName(undefined), 'My Möbius')
+  assert.equal(suggestDeploymentName(named('My Möbius')), 'My Möbius 2')
+  // Case and surrounding space do not make a name different, as for the launcher.
+  assert.equal(suggestDeploymentName(named(' my möbius ', 'MY MÖBIUS 2')), 'My Möbius 3')
+  // Only the default's own sequence is skipped, and a free first name is kept.
+  assert.equal(suggestDeploymentName(named('Notes', 'My Möbius 2')), 'My Möbius')
+  assert.equal(suggestDeploymentName([{}, null, { name: 7 }]), 'My Möbius')
+})
+
+test('the create modal starts from the suggested name and is given the deployments', async () => {
+  const source = await readFile(new URL('./index.jsx', import.meta.url), 'utf8')
+  assert.match(source, /useState\(\(\) => suggestDeploymentName\(deployments\)\)/)
+  assert.match(source, /deployments=\{railway\?\.instances\}/)
+  assert.doesNotMatch(source, /useState\('My Möbius'\)/)
+})
+
+test('a refused create is shown above the name and marks it until it is edited', async () => {
+  const source = await readFile(new URL('./index.jsx', import.meta.url), 'utf8')
+  const start = source.indexOf('function NewDeploymentModal(')
+  const modal = source.slice(start, start + source.slice(start + 10).search(/\n(function|export default) /) + 10)
+  // The message sits above the name it concerns, and only once in the form.
+  const errorAt = modal.indexOf('id="create-error"')
+  assert.ok(errorAt > 0 && errorAt < modal.indexOf('htmlFor="deployment-name"'))
+  assert.equal((modal.match(/\{error &&/g) || []).length, 1)
+  // The name is marked invalid and described by the message, loses its tick,
+  // takes focus back, and is cleared as soon as it is edited or resubmitted.
+  assert.match(modal, /aria-invalid=\{nameRefused \? true : undefined\}/)
+  assert.match(modal, /aria-describedby=\{error \? 'create-error' : undefined\}/)
+  assert.match(modal, /name\.trim\(\) && !nameRefused/)
+  assert.match(modal, /if \(nameRefused && !pending\) inputRef\.current\?\.focus\(\)/)
+  assert.match(modal, /setNameRefused\(true\)/)
+  assert.equal((modal.match(/setNameRefused\(false\)/g) || []).length, 2)
 })
