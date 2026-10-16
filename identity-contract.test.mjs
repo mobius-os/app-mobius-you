@@ -903,3 +903,21 @@ test('the create modal starts from the suggested name and is given the deploymen
   assert.match(source, /deployments=\{railway\?\.instances\}/)
   assert.doesNotMatch(source, /useState\('My Möbius'\)/)
 })
+
+test('a refused create is shown above the name and marks it until it is edited', async () => {
+  const source = await readFile(new URL('./index.jsx', import.meta.url), 'utf8')
+  const start = source.indexOf('function NewDeploymentModal(')
+  const modal = source.slice(start, start + source.slice(start + 10).search(/\n(function|export default) /) + 10)
+  // The message sits above the name it concerns, and only once in the form.
+  const errorAt = modal.indexOf('id="create-error"')
+  assert.ok(errorAt > 0 && errorAt < modal.indexOf('htmlFor="deployment-name"'))
+  assert.equal((modal.match(/\{error &&/g) || []).length, 1)
+  // The name is marked invalid and described by the message, loses its tick,
+  // takes focus back, and is cleared as soon as it is edited or resubmitted.
+  assert.match(modal, /aria-invalid=\{nameRefused \? true : undefined\}/)
+  assert.match(modal, /aria-describedby=\{error \? 'create-error' : undefined\}/)
+  assert.match(modal, /name\.trim\(\) && !nameRefused/)
+  assert.match(modal, /if \(nameRefused && !pending\) inputRef\.current\?\.focus\(\)/)
+  assert.match(modal, /setNameRefused\(true\)/)
+  assert.equal((modal.match(/setNameRefused\(false\)/g) || []).length, 2)
+})

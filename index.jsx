@@ -1290,14 +1290,22 @@ function NewDeploymentModal({
   })
   const [pending, setPending] = useState(false)
   const [error, setError] = useState('')
+  // A refused create marks the name until it is edited: the name is what the
+  // launcher most often refuses (one a Railway project already has).
+  const [nameRefused, setNameRefused] = useState(false)
   const inputRef = useRef(null)
   const dialogRef = useDialog(onClose, pending, inputRef)
+
+  useEffect(() => {
+    if (nameRefused && !pending) inputRef.current?.focus()
+  }, [nameRefused, pending])
 
   const submit = async event => {
     event.preventDefault()
     if (!name.trim() || !workspace || pending) return
     setPending(true)
     setError('')
+    setNameRefused(false)
     try {
       const settings = {
         name: name.trim(),
@@ -1312,6 +1320,7 @@ function NewDeploymentModal({
       onClose()
     } catch (requestError) {
       setError(requestError.message)
+      setNameRefused(true)
     } finally {
       setPending(false)
     }
@@ -1362,8 +1371,10 @@ function NewDeploymentModal({
         <h2 id="new-deployment-title">Name your Möbius</h2>
         <p className="id-composer-sub">We’ll build it in your Railway account.</p>
 
+        {error && <div className="id-composer-error" id="create-error" role="alert">{error}</div>}
+
         <label className="id-label" htmlFor="deployment-name">Name</label>
-        <div className="id-input-wrap id-input-wrap--tick">
+        <div className={`id-input-wrap id-input-wrap--tick${nameRefused ? ' is-invalid' : ''}`}>
           <input
             ref={inputRef}
             id="deployment-name"
@@ -1373,9 +1384,14 @@ function NewDeploymentModal({
             autoComplete="off"
             spellCheck="false"
             disabled={pending}
-            onChange={event => setName(event.target.value)}
+            aria-invalid={nameRefused ? true : undefined}
+            aria-describedby={error ? 'create-error' : undefined}
+            onChange={event => {
+              setName(event.target.value)
+              setNameRefused(false)
+            }}
           />
-          {name.trim() && (
+          {name.trim() && !nameRefused && (
             <span className="id-tick" aria-hidden="true">
               <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round"><path d="m5 13 4 4L19 7" /></svg>
             </span>
@@ -1480,7 +1496,6 @@ function NewDeploymentModal({
           </div>
         )}
         {blocked && <div className="id-manage-error" role="alert">{blocked}</div>}
-        {error && <div className="id-signin-error" role="alert">{error}</div>}
 
         <div className="id-composer-foot">
           <p className="id-composer-note">

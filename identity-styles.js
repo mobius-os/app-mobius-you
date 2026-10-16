@@ -1638,6 +1638,27 @@ button { user-select: none; -webkit-user-select: none; }
 
 .id-input-wrap--tick { position: relative; padding-right: 42px; }
 
+/* A refused create is shown above the name it concerns, not below the form. */
+.id-composer-error {
+  margin: 0 0 16px;
+  padding: 11px 14px;
+  border: 1px solid color-mix(in srgb, var(--danger, #d65a5a) 30%, var(--border, #333));
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--danger, #d65a5a) 12%, transparent);
+  color: var(--danger, #e67a7a);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.id-input-wrap.is-invalid,
+.id-input-wrap.is-invalid:focus-within {
+  border-color: var(--danger, #d65a5a);
+}
+
+.id-input-wrap.is-invalid:focus-within {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger, #d65a5a) 18%, transparent);
+}
+
 .id-tick {
   position: absolute;
   right: 12px;
