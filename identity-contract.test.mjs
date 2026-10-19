@@ -904,20 +904,22 @@ test('the create modal starts from the suggested name and is given the deploymen
   assert.doesNotMatch(source, /useState\('My Möbius'\)/)
 })
 
-test('a refused create is shown above the name and marks it until it is edited', async () => {
+test('notices about creating sit above the name, and a refusal does not blame the name', async () => {
   const source = await readFile(new URL('./index.jsx', import.meta.url), 'utf8')
   const start = source.indexOf('function NewDeploymentModal(')
   const modal = source.slice(start, start + source.slice(start + 10).search(/\n(function|export default) /) + 10)
-  // The message sits above the name it concerns, and only once in the form.
-  const errorAt = modal.indexOf('id="create-error"')
-  assert.ok(errorAt > 0 && errorAt < modal.indexOf('htmlFor="deployment-name"'))
-  assert.equal((modal.match(/\{error &&/g) || []).length, 1)
-  // The name is marked invalid and described by the message, loses its tick,
-  // takes focus back, and is cleared as soon as it is edited or resubmitted.
-  assert.match(modal, /aria-invalid=\{nameRefused \? true : undefined\}/)
+  // The refusal, the plan's notice and a missing workspace all come before the
+  // name they concern, and each appears once, not again next to Deploy.
+  const nameAt = modal.indexOf('htmlFor="deployment-name"')
+  for (const notice of ['id="create-error"', '{blocked && <div', '{!workspace && (']) {
+    const at = modal.indexOf(notice)
+    assert.ok(at > 0 && at < nameAt, notice)
+    assert.equal(modal.split(notice).length - 1, 1, notice)
+  }
   assert.match(modal, /aria-describedby=\{error \? 'create-error' : undefined\}/)
-  assert.match(modal, /name\.trim\(\) && !nameRefused/)
-  assert.match(modal, /if \(nameRefused && !pending\) inputRef\.current\?\.focus\(\)/)
-  assert.match(modal, /setNameRefused\(true\)/)
-  assert.equal((modal.match(/setNameRefused\(false\)/g) || []).length, 2)
+  // Most refusals are not about the name (plan, sign-in, workspace, network), and
+  // the app cannot tell a taken name from them, so the name is never marked.
+  assert.doesNotMatch(modal, /aria-invalid|nameRefused|is-invalid/)
+  // A refusal belongs to the workspace it was made for.
+  assert.match(modal, /setChosenWorkspaceId\(event\.target\.value\)\s*\n\s*\/\/[^\n]*\n\s*setError\(''\)/)
 })

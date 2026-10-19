@@ -1638,7 +1638,7 @@ button { user-select: none; -webkit-user-select: none; }
 
 .id-input-wrap--tick { position: relative; padding-right: 42px; }
 
-/* A refused create is shown above the name it concerns, not below the form. */
+/* Notices about creating (a refusal, the plan, a missing workspace) sit above the name. */
 .id-composer-error {
   margin: 0 0 16px;
   padding: 11px 14px;
@@ -1650,13 +1650,11 @@ button { user-select: none; -webkit-user-select: none; }
   line-height: 1.5;
 }
 
-.id-input-wrap.is-invalid,
-.id-input-wrap.is-invalid:focus-within {
-  border-color: var(--danger, #d65a5a);
-}
-
-.id-input-wrap.is-invalid:focus-within {
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger, #d65a5a) 18%, transparent);
+.id-composer-modal .id-manage-error {
+  margin: 0 0 16px;
+  padding: 11px 14px;
+  border-radius: 12px;
+  font-size: 13px;
 }
 
 .id-tick {

@@ -1290,22 +1290,14 @@ function NewDeploymentModal({
   })
   const [pending, setPending] = useState(false)
   const [error, setError] = useState('')
-  // A refused create marks the name until it is edited: the name is what the
-  // launcher most often refuses (one a Railway project already has).
-  const [nameRefused, setNameRefused] = useState(false)
   const inputRef = useRef(null)
   const dialogRef = useDialog(onClose, pending, inputRef)
-
-  useEffect(() => {
-    if (nameRefused && !pending) inputRef.current?.focus()
-  }, [nameRefused, pending])
 
   const submit = async event => {
     event.preventDefault()
     if (!name.trim() || !workspace || pending) return
     setPending(true)
     setError('')
-    setNameRefused(false)
     try {
       const settings = {
         name: name.trim(),
@@ -1320,7 +1312,6 @@ function NewDeploymentModal({
       onClose()
     } catch (requestError) {
       setError(requestError.message)
-      setNameRefused(true)
     } finally {
       setPending(false)
     }
@@ -1371,10 +1362,18 @@ function NewDeploymentModal({
         <h2 id="new-deployment-title">Name your Möbius</h2>
         <p className="id-composer-sub">We’ll build it in your Railway account.</p>
 
+        {!workspace && (
+          <div className="id-manage-error" role="alert">
+            {workspaces?.length === 0
+              ? 'Railway did not share a workspace. Reconnect Railway and share one.'
+              : 'Update Möbius to choose a Railway workspace.'}
+          </div>
+        )}
+        {blocked && <div className="id-manage-error" role="alert">{blocked}</div>}
         {error && <div className="id-composer-error" id="create-error" role="alert">{error}</div>}
 
         <label className="id-label" htmlFor="deployment-name">Name</label>
-        <div className={`id-input-wrap id-input-wrap--tick${nameRefused ? ' is-invalid' : ''}`}>
+        <div className="id-input-wrap id-input-wrap--tick">
           <input
             ref={inputRef}
             id="deployment-name"
@@ -1384,14 +1383,10 @@ function NewDeploymentModal({
             autoComplete="off"
             spellCheck="false"
             disabled={pending}
-            aria-invalid={nameRefused ? true : undefined}
             aria-describedby={error ? 'create-error' : undefined}
-            onChange={event => {
-              setName(event.target.value)
-              setNameRefused(false)
-            }}
+            onChange={event => setName(event.target.value)}
           />
-          {name.trim() && !nameRefused && (
+          {name.trim() && (
             <span className="id-tick" aria-hidden="true">
               <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round"><path d="m5 13 4 4L19 7" /></svg>
             </span>
@@ -1401,7 +1396,11 @@ function NewDeploymentModal({
         {workspaces?.length > 1 && (
           <label className="id-field-block">
             <span className="id-label">Railway workspace</span>
-            <select className="id-select" value={workspaceId} disabled={pending} onChange={event => setChosenWorkspaceId(event.target.value)}>
+            <select className="id-select" value={workspaceId} disabled={pending} onChange={event => {
+              setChosenWorkspaceId(event.target.value)
+              // A refusal belongs to the workspace it was made for.
+              setError('')
+            }}>
               {workspaces.map(item => (
                 <option key={item.id} value={item.id}>{item.name}</option>
               ))}
@@ -1487,15 +1486,6 @@ function NewDeploymentModal({
             </span>
           </label>
         )}
-
-        {!workspace && (
-          <div className="id-manage-error" role="alert">
-            {workspaces?.length === 0
-              ? 'Railway did not share a workspace. Reconnect Railway and share one.'
-              : 'Update Möbius to choose a Railway workspace.'}
-          </div>
-        )}
-        {blocked && <div className="id-manage-error" role="alert">{blocked}</div>}
 
         <div className="id-composer-foot">
           <p className="id-composer-note">
