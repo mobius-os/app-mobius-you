@@ -1291,7 +1291,14 @@ function NewDeploymentModal({
   const [pending, setPending] = useState(false)
   const [error, setError] = useState('')
   const inputRef = useRef(null)
+  const errorRef = useRef(null)
   const dialogRef = useDialog(onClose, pending, inputRef)
+
+  // The refusal sits at the top of a form that can be taller than the screen
+  // (Advanced settings open, a phone): bring it into view and to screen readers.
+  useEffect(() => {
+    if (error) errorRef.current?.focus()
+  }, [error])
 
   const submit = async event => {
     event.preventDefault()
@@ -1363,14 +1370,19 @@ function NewDeploymentModal({
         <p className="id-composer-sub">We’ll build it in your Railway account.</p>
 
         {!workspace && (
-          <div className="id-manage-error" role="alert">
+          <div className="id-composer-error" role="alert">
             {workspaces?.length === 0
               ? 'Railway did not share a workspace. Reconnect Railway and share one.'
               : 'Update Möbius to choose a Railway workspace.'}
           </div>
         )}
-        {blocked && <div className="id-manage-error" role="alert">{blocked}</div>}
-        {error && <div className="id-composer-error" id="create-error" role="alert">{error}</div>}
+        {/* The live refusal is the newer answer: show it instead of the stored plan notice. */}
+        {blocked && !error && <div className="id-composer-error" role="alert">{blocked}</div>}
+        {error && (
+          <div className="id-composer-error" id="create-error" role="alert" tabIndex={-1} ref={errorRef}>
+            {error}
+          </div>
+        )}
 
         <label className="id-label" htmlFor="deployment-name">Name</label>
         <div className="id-input-wrap id-input-wrap--tick">
@@ -1384,7 +1396,11 @@ function NewDeploymentModal({
             spellCheck="false"
             disabled={pending}
             aria-describedby={error ? 'create-error' : undefined}
-            onChange={event => setName(event.target.value)}
+            onChange={event => {
+              setName(event.target.value)
+              // A refusal that was about the old name is no longer true.
+              setError('')
+            }}
           />
           {name.trim() && (
             <span className="id-tick" aria-hidden="true">

@@ -904,22 +904,31 @@ test('the create modal starts from the suggested name and is given the deploymen
   assert.doesNotMatch(source, /useState\('My Möbius'\)/)
 })
 
-test('notices about creating sit above the name, and a refusal does not blame the name', async () => {
+test('notices about creating sit above the name, in one style, and reach the owner', async () => {
   const source = await readFile(new URL('./index.jsx', import.meta.url), 'utf8')
   const start = source.indexOf('function NewDeploymentModal(')
   const modal = source.slice(start, start + source.slice(start + 10).search(/\n(function|export default) /) + 10)
   // The refusal, the plan's notice and a missing workspace all come before the
-  // name they concern, and each appears once, not again next to Deploy.
+  // name they concern, each appears once, and they share one style.
   const nameAt = modal.indexOf('htmlFor="deployment-name"')
-  for (const notice of ['id="create-error"', '{blocked && <div', '{!workspace && (']) {
+  for (const notice of ['id="create-error"', '{blocked && !error && <div', '{!workspace && (']) {
     const at = modal.indexOf(notice)
     assert.ok(at > 0 && at < nameAt, notice)
     assert.equal(modal.split(notice).length - 1, 1, notice)
   }
+  assert.equal(modal.split('className="id-composer-error"').length - 1, 3)
+  assert.doesNotMatch(source, /id-manage-error/)
+  assert.doesNotMatch(await readFile(new URL('./identity-styles.js', import.meta.url), 'utf8'), /id-manage-error/)
+  // The live refusal replaces the stored plan notice instead of repeating it.
+  assert.match(modal, /\{blocked && !error && </)
+  // A refusal taller forms hide is brought into view and to screen readers.
+  assert.match(modal, /tabIndex=\{-1\} ref=\{errorRef\}/)
+  assert.match(modal, /useEffect\(\(\) => \{\s*\n\s*if \(error\) errorRef\.current\?\.focus\(\)\s*\n\s*\}, \[error\]\)/)
   assert.match(modal, /aria-describedby=\{error \? 'create-error' : undefined\}/)
   // Most refusals are not about the name (plan, sign-in, workspace, network), and
   // the app cannot tell a taken name from them, so the name is never marked.
   assert.doesNotMatch(modal, /aria-invalid|nameRefused|is-invalid/)
-  // A refusal belongs to the workspace it was made for.
+  // A refusal belongs to the workspace and the name it was made for.
   assert.match(modal, /setChosenWorkspaceId\(event\.target\.value\)\s*\n\s*\/\/[^\n]*\n\s*setError\(''\)/)
+  assert.match(modal, /setName\(event\.target\.value\)\s*\n\s*\/\/[^\n]*\n\s*setError\(''\)/)
 })
