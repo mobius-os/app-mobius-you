@@ -35,6 +35,7 @@ import {
   parseRailway,
   parseWorkspacePlans,
   railwayAccountChanged,
+  submittedDeploymentName,
   suggestDeploymentName,
   suggestRailwayRegion,
   waitForAccountLink,
@@ -1251,7 +1252,8 @@ function resourceDefaults(limits) {
 function NewDeploymentModal({
   onClose, onCreate, workspacePlans, preferredWorkspaceId, regionOptions, deployments,
 }) {
-  const [name, setName] = useState(() => suggestDeploymentName(deployments))
+  const [suggestedName] = useState(() => suggestDeploymentName(deployments))
+  const [name, setName] = useState(suggestedName)
   const [managedAuth, setManagedAuth] = useState(true)
   // The form owns the workspace choice; limits, plan and blocked notice come
   // from the selected workspace. The workspace in use is derived on every
@@ -1307,7 +1309,7 @@ function NewDeploymentModal({
     setError('')
     try {
       const settings = {
-        name: name.trim(),
+        name: submittedDeploymentName(name, suggestedName),
         managed_auth: managedAuth,
         cpu: cpu ? Number(cpu) : null,
         memory_mb: memory ? Number(memory) : null,

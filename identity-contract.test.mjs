@@ -17,6 +17,7 @@ import {
   parseRailway,
   parseWorkspacePlans,
   railwayAccountChanged,
+  submittedDeploymentName,
   suggestDeploymentName,
   suggestRailwayRegion,
   waitForAccountLink,
@@ -895,6 +896,15 @@ test('the create form starts from a name none of the owner\'s deployments has', 
   // Only the default's own sequence is skipped, and a free first name is kept.
   assert.equal(suggestDeploymentName(named('Notes', 'My Möbius 2')), 'My Möbius')
   assert.equal(suggestDeploymentName([{}, null, { name: 7 }]), 'My Möbius')
+})
+
+test('an untouched suggestion is sent as the placeholder, a typed name as typed', () => {
+  assert.equal(submittedDeploymentName('My Möbius 2', 'My Möbius 2'), 'My Möbius')
+  // Same comparison as the launcher: case, space and Unicode form do not matter.
+  assert.equal(submittedDeploymentName(' my möbius 2 ', 'My Möbius 2'), 'My Möbius')
+  assert.equal(submittedDeploymentName('My Mo\u0308bius 2', 'My M\u00f6bius 2'), 'My Möbius')
+  assert.equal(submittedDeploymentName('Notes ', 'My Möbius 2'), 'Notes')
+  assert.equal(suggestDeploymentName([{ name: 'My Mo\u0308bius' }]), 'My Möbius 2')
 })
 
 test('the create modal starts from the suggested name and is given the deployments', async () => {

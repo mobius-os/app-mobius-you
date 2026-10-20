@@ -59,13 +59,29 @@ export const DEFAULT_DEPLOYMENT_NAME = 'My Möbius'
 export function suggestDeploymentName(instances) {
   const taken = new Set(
     (Array.isArray(instances) ? instances : [])
-      .map(instance => String(instance?.name ?? '').trim().toLowerCase()),
+      .map(instance => deploymentNameKey(instance?.name)),
   )
   let name = DEFAULT_DEPLOYMENT_NAME
-  for (let number = 2; taken.has(name.toLowerCase()); number += 1) {
+  for (let number = 2; taken.has(deploymentNameKey(name)); number += 1) {
     name = `${DEFAULT_DEPLOYMENT_NAME} ${number}`
   }
   return name
+}
+
+// How names are compared: the launcher uses NFC + casefold. Upper then lower
+// case is JavaScript's closest casefold (it folds ß to ss, as casefold does).
+export function deploymentNameKey(name) {
+  return String(name ?? '').normalize('NFC').trim().toUpperCase().toLowerCase()
+}
+
+// The launcher refuses a name the owner chose that is already in use, but
+// resolves the placeholder itself to the first free default. A form that is
+// still showing its own suggestion therefore sends the placeholder, so an
+// untouched suggestion is never refused, even if a teammate took it meanwhile.
+export function submittedDeploymentName(name, suggestion) {
+  return deploymentNameKey(name) === deploymentNameKey(suggestion)
+    ? DEFAULT_DEPLOYMENT_NAME
+    : String(name).trim()
 }
 
 const DELETE_CONFIRMATION_FALLBACK = (
