@@ -1638,6 +1638,20 @@ button { user-select: none; -webkit-user-select: none; }
 
 .id-input-wrap--tick { position: relative; padding-right: 42px; }
 
+/* Notices about creating (a refusal, the plan, a missing workspace) sit above the name. */
+.id-composer-error:focus { outline: none; }
+
+.id-composer-error {
+  margin: 0 0 16px;
+  padding: 11px 14px;
+  border: 1px solid color-mix(in srgb, var(--danger, #d65a5a) 30%, var(--border, #333));
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--danger, #d65a5a) 12%, transparent);
+  color: var(--danger, #e67a7a);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
 .id-tick {
   position: absolute;
   right: 12px;
@@ -1917,18 +1931,10 @@ button { user-select: none; -webkit-user-select: none; }
   align-self: flex-start;
 }
 
-.id-manage-error,
 .id-delete-confirm {
   margin-top: 15px;
   padding: 13px;
   border-radius: 12px;
-}
-
-.id-manage-error {
-  background: color-mix(in srgb, var(--danger, #d65a5a) 10%, var(--surface-2, #1e1e1e));
-  color: var(--danger, #e67a7a);
-  font-size: 12px;
-  line-height: 1.45;
 }
 
 .id-delete-confirm {

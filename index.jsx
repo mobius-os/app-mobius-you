@@ -35,6 +35,8 @@ import {
   parseRailway,
   parseWorkspacePlans,
   railwayAccountChanged,
+  submittedDeploymentName,
+  suggestDeploymentName,
   suggestRailwayRegion,
   waitForAccountLink,
 } from './identity-contract.js'
@@ -1248,9 +1250,10 @@ function resourceDefaults(limits) {
 // launch summary, resources, and access tucked behind Advanced settings, plus
 // a Deploy Möbius action. Container updates stay in the normal Settings flow.
 function NewDeploymentModal({
-  onClose, onCreate, workspacePlans, preferredWorkspaceId, regionOptions,
+  onClose, onCreate, workspacePlans, preferredWorkspaceId, regionOptions, deployments,
 }) {
-  const [name, setName] = useState('My Möbius')
+  const [suggestedName] = useState(() => suggestDeploymentName(deployments))
+  const [name, setName] = useState(suggestedName)
   const [managedAuth, setManagedAuth] = useState(true)
   // The form owns the workspace choice; limits, plan and blocked notice come
   // from the selected workspace. The workspace in use is derived on every
@@ -1290,7 +1293,14 @@ function NewDeploymentModal({
   const [pending, setPending] = useState(false)
   const [error, setError] = useState('')
   const inputRef = useRef(null)
+  const errorRef = useRef(null)
   const dialogRef = useDialog(onClose, pending, inputRef)
+
+  // The refusal sits at the top of a form that can be taller than the screen
+  // (Advanced settings open, a phone): bring it into view and to screen readers.
+  useEffect(() => {
+    if (error) errorRef.current?.focus()
+  }, [error])
 
   const submit = async event => {
     event.preventDefault()
@@ -1299,7 +1309,7 @@ function NewDeploymentModal({
     setError('')
     try {
       const settings = {
-        name: name.trim(),
+        name: submittedDeploymentName(name, suggestedName),
         managed_auth: managedAuth,
         cpu: cpu ? Number(cpu) : null,
         memory_mb: memory ? Number(memory) : null,
@@ -1361,6 +1371,21 @@ function NewDeploymentModal({
         <h2 id="new-deployment-title">Name your Möbius</h2>
         <p className="id-composer-sub">We’ll build it in your Railway account.</p>
 
+        {!workspace && (
+          <div className="id-composer-error" role="alert">
+            {workspaces?.length === 0
+              ? 'Railway did not share a workspace. Reconnect Railway and share one.'
+              : 'Update Möbius to choose a Railway workspace.'}
+          </div>
+        )}
+        {/* The live refusal is the newer answer: show it instead of the stored plan notice. */}
+        {blocked && !error && <div className="id-composer-error" role="alert">{blocked}</div>}
+        {error && (
+          <div className="id-composer-error" id="create-error" role="alert" tabIndex={-1} ref={errorRef}>
+            {error}
+          </div>
+        )}
+
         <label className="id-label" htmlFor="deployment-name">Name</label>
         <div className="id-input-wrap id-input-wrap--tick">
           <input
@@ -1372,7 +1397,12 @@ function NewDeploymentModal({
             autoComplete="off"
             spellCheck="false"
             disabled={pending}
-            onChange={event => setName(event.target.value)}
+            aria-describedby={error ? 'create-error' : undefined}
+            onChange={event => {
+              setName(event.target.value)
+              // A refusal that was about the old name is no longer true.
+              setError('')
+            }}
           />
           {name.trim() && (
             <span className="id-tick" aria-hidden="true">
@@ -1384,7 +1414,11 @@ function NewDeploymentModal({
         {workspaces?.length > 1 && (
           <label className="id-field-block">
             <span className="id-label">Railway workspace</span>
-            <select className="id-select" value={workspaceId} disabled={pending} onChange={event => setChosenWorkspaceId(event.target.value)}>
+            <select className="id-select" value={workspaceId} disabled={pending} onChange={event => {
+              setChosenWorkspaceId(event.target.value)
+              // A refusal belongs to the workspace it was made for.
+              setError('')
+            }}>
               {workspaces.map(item => (
                 <option key={item.id} value={item.id}>{item.name}</option>
               ))}
@@ -1470,16 +1504,6 @@ function NewDeploymentModal({
             </span>
           </label>
         )}
-
-        {!workspace && (
-          <div className="id-manage-error" role="alert">
-            {workspaces?.length === 0
-              ? 'Railway did not share a workspace. Reconnect Railway and share one.'
-              : 'Update Möbius to choose a Railway workspace.'}
-          </div>
-        )}
-        {blocked && <div className="id-manage-error" role="alert">{blocked}</div>}
-        {error && <div className="id-signin-error" role="alert">{error}</div>}
 
         <div className="id-composer-foot">
           <p className="id-composer-note">
@@ -3041,6 +3065,7 @@ export default function App({ appId, token }) {
               instance => instance.workspace_id && instance.status !== 'deleting',
             )?.workspace_id}
             regionOptions={railway?.connection?.region_options}
+            deployments={railway?.instances}
             onClose={() => setCreatingDeployment(false)}
             onCreate={payload => railwayAction('/deployments', {
               method: 'POST',

@@ -17,6 +17,8 @@ import {
   parseRailway,
   parseWorkspacePlans,
   railwayAccountChanged,
+  submittedDeploymentName,
+  suggestDeploymentName,
   suggestRailwayRegion,
   waitForAccountLink,
 } from './identity-contract.js'
@@ -882,4 +884,61 @@ test('parseIdentity requires the current member_since date', () => {
   assert.throws(() => parseIdentity({ ...base, linked_at: '2026-08-23T17:00:00Z' }))
   assert.throws(() => parseIdentity({ ...base, member_since: 'not-a-date' }))
   assert.throws(() => parseIdentity({ ...base, member_since: 12345 }))
+})
+
+test('the create form starts from a name none of the owner\'s deployments has', () => {
+  const named = (...names) => names.map(name => ({ name }))
+  assert.equal(suggestDeploymentName([]), 'My Möbius')
+  assert.equal(suggestDeploymentName(undefined), 'My Möbius')
+  assert.equal(suggestDeploymentName(named('My Möbius')), 'My Möbius 2')
+  // Case and surrounding space do not make a name different, as for the launcher.
+  assert.equal(suggestDeploymentName(named(' my möbius ', 'MY MÖBIUS 2')), 'My Möbius 3')
+  // Only the default's own sequence is skipped, and a free first name is kept.
+  assert.equal(suggestDeploymentName(named('Notes', 'My Möbius 2')), 'My Möbius')
+  assert.equal(suggestDeploymentName([{}, null, { name: 7 }]), 'My Möbius')
+})
+
+test('an untouched suggestion is sent as the placeholder, a typed name as typed', () => {
+  assert.equal(submittedDeploymentName('My Möbius 2', 'My Möbius 2'), 'My Möbius')
+  // Same comparison as the launcher: case, space and Unicode form do not matter.
+  assert.equal(submittedDeploymentName(' my möbius 2 ', 'My Möbius 2'), 'My Möbius')
+  assert.equal(submittedDeploymentName('My Mo\u0308bius 2', 'My M\u00f6bius 2'), 'My Möbius')
+  assert.equal(submittedDeploymentName('Notes ', 'My Möbius 2'), 'Notes')
+  assert.equal(suggestDeploymentName([{ name: 'My Mo\u0308bius' }]), 'My Möbius 2')
+})
+
+test('the create modal starts from the suggested name and is given the deployments', async () => {
+  const source = await readFile(new URL('./index.jsx', import.meta.url), 'utf8')
+  assert.match(source, /useState\(\(\) => suggestDeploymentName\(deployments\)\)/)
+  assert.match(source, /deployments=\{railway\?\.instances\}/)
+  assert.doesNotMatch(source, /useState\('My Möbius'\)/)
+})
+
+test('notices about creating sit above the name, in one style, and reach the owner', async () => {
+  const source = await readFile(new URL('./index.jsx', import.meta.url), 'utf8')
+  const start = source.indexOf('function NewDeploymentModal(')
+  const modal = source.slice(start, start + source.slice(start + 10).search(/\n(function|export default) /) + 10)
+  // The refusal, the plan's notice and a missing workspace all come before the
+  // name they concern, each appears once, and they share one style.
+  const nameAt = modal.indexOf('htmlFor="deployment-name"')
+  for (const notice of ['id="create-error"', '{blocked && !error && <div', '{!workspace && (']) {
+    const at = modal.indexOf(notice)
+    assert.ok(at > 0 && at < nameAt, notice)
+    assert.equal(modal.split(notice).length - 1, 1, notice)
+  }
+  assert.equal(modal.split('className="id-composer-error"').length - 1, 3)
+  assert.doesNotMatch(source, /id-manage-error/)
+  assert.doesNotMatch(await readFile(new URL('./identity-styles.js', import.meta.url), 'utf8'), /id-manage-error/)
+  // The live refusal replaces the stored plan notice instead of repeating it.
+  assert.match(modal, /\{blocked && !error && </)
+  // A refusal taller forms hide is brought into view and to screen readers.
+  assert.match(modal, /tabIndex=\{-1\} ref=\{errorRef\}/)
+  assert.match(modal, /useEffect\(\(\) => \{\s*\n\s*if \(error\) errorRef\.current\?\.focus\(\)\s*\n\s*\}, \[error\]\)/)
+  assert.match(modal, /aria-describedby=\{error \? 'create-error' : undefined\}/)
+  // Most refusals are not about the name (plan, sign-in, workspace, network), and
+  // the app cannot tell a taken name from them, so the name is never marked.
+  assert.doesNotMatch(modal, /aria-invalid|nameRefused|is-invalid/)
+  // A refusal belongs to the workspace and the name it was made for.
+  assert.match(modal, /setChosenWorkspaceId\(event\.target\.value\)\s*\n\s*\/\/[^\n]*\n\s*setError\(''\)/)
+  assert.match(modal, /setName\(event\.target\.value\)\s*\n\s*\/\/[^\n]*\n\s*setError\(''\)/)
 })

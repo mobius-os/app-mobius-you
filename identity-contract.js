@@ -50,6 +50,40 @@ export function suggestRailwayRegion(zone, offsetMinutes) {
   return ''
 }
 
+export const DEFAULT_DEPLOYMENT_NAME = 'My Möbius'
+
+// A deployment's name is also its Railway project's name, and the launcher
+// refuses a name another project in the workspace already has. The create form
+// therefore starts from the first default none of the owner's deployments
+// uses, instead of one that would be refused on the second create.
+export function suggestDeploymentName(instances) {
+  const taken = new Set(
+    (Array.isArray(instances) ? instances : [])
+      .map(instance => deploymentNameKey(instance?.name)),
+  )
+  let name = DEFAULT_DEPLOYMENT_NAME
+  for (let number = 2; taken.has(deploymentNameKey(name)); number += 1) {
+    name = `${DEFAULT_DEPLOYMENT_NAME} ${number}`
+  }
+  return name
+}
+
+// How names are compared: the launcher uses NFC + casefold. Upper then lower
+// case is JavaScript's closest casefold (it folds ß to ss, as casefold does).
+export function deploymentNameKey(name) {
+  return String(name ?? '').normalize('NFC').trim().toUpperCase().toLowerCase()
+}
+
+// The launcher refuses a name the owner chose that is already in use, but
+// resolves the placeholder itself to the first free default. A form that is
+// still showing its own suggestion therefore sends the placeholder, so an
+// untouched suggestion is never refused, even if a teammate took it meanwhile.
+export function submittedDeploymentName(name, suggestion) {
+  return deploymentNameKey(name) === deploymentNameKey(suggestion)
+    ? DEFAULT_DEPLOYMENT_NAME
+    : String(name).trim()
+}
+
 const DELETE_CONFIRMATION_FALLBACK = (
   "Möbius couldn't confirm whether Railway removed this project. "
   + 'Try deleting again, or open Railway to check.'
