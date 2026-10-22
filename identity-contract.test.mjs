@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises'
 import assert from 'node:assert/strict'
 
 import {
+  accountConfirmUrl,
   accountStatus,
   agentAccessPresentation,
   deploymentCanRecover,
@@ -882,4 +883,27 @@ test('parseIdentity requires the current member_since date', () => {
   assert.throws(() => parseIdentity({ ...base, linked_at: '2026-08-23T17:00:00Z' }))
   assert.throws(() => parseIdentity({ ...base, member_since: 'not-a-date' }))
   assert.throws(() => parseIdentity({ ...base, member_since: 12345 }))
+})
+
+test('account confirmation accepts only an https dashboard link for its own code', () => {
+  assert.equal(
+    accountConfirmUrl({
+      code: 'confirm_on_account',
+      message: 'Finish this on your mobius.you dashboard.',
+      confirm_url: 'https://www.mobius.you/dashboard',
+    }),
+    'https://www.mobius.you/dashboard',
+  )
+  for (const detail of [
+    null,
+    'Finish this on mobius.you',
+    { code: 'other', confirm_url: 'https://www.mobius.you/dashboard' },
+    { code: 'confirm_on_account', confirm_url: 'http://www.mobius.you/dashboard' },
+    { code: 'confirm_on_account', confirm_url: 'javascript:alert(1)' },
+    { code: 'confirm_on_account', confirm_url: 'https://www.mobius.you/elsewhere' },
+    { code: 'confirm_on_account', confirm_url: 'https://www.mobius.you/dashboard?next=x' },
+    { code: 'confirm_on_account', confirm_url: 'https://user:pw@www.mobius.you/dashboard' },
+  ]) {
+    assert.equal(accountConfirmUrl(detail), '')
+  }
 })
