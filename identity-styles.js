@@ -957,6 +957,46 @@ button { user-select: none; -webkit-user-select: none; }
   grid-column: 2;
 }
 
+/* Pinned so the link stays in view next to whichever deployment button sent
+   the owner to the account website. */
+.id-notice--confirm {
+  position: sticky;
+  top: 8px;
+  z-index: 5;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  column-gap: 8px;
+  border-color: color-mix(in srgb, var(--accent, #8b7cf6) 45%, var(--border, #333));
+  background: color-mix(in srgb, var(--accent, #8b7cf6) 12%, var(--surface, #171717));
+}
+
+.id-notice--confirm > strong,
+.id-notice--confirm > span {
+  grid-column: 1;
+}
+
+.id-notice--confirm > .id-btn {
+  grid-row: 1 / span 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  text-decoration: none;
+}
+
+@media (max-width: 520px) {
+  .id-notice--confirm {
+    grid-template-columns: 1fr 1fr;
+  }
+  .id-notice--confirm > strong,
+  .id-notice--confirm > span {
+    grid-column: 1 / -1;
+  }
+  .id-notice--confirm > .id-btn {
+    grid-row: auto;
+    justify-content: center;
+  }
+}
+
 .id-error,
 .id-signin-error {
   color: var(--danger, #e67a7a);
