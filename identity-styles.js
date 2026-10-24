@@ -1751,6 +1751,9 @@ button { user-select: none; -webkit-user-select: none; }
   .id-spin { animation: none; }
   .id-provider { transition: none; }
   .id-model-details > summary svg { transition: none; }
+  .id-shell > * { animation: none; }
+  .id-dot--online { animation: none; }
+  .id-skeleton::after { animation: none; }
 }
 
 /* mobius-ui:CenteredRail v1 */
