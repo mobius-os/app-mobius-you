@@ -1,7 +1,7 @@
 name: CI
 
-# Validates the app on every push to main and every PR. The contract tests are
-# self-contained (node --test, no shell deps); the compile smoke bundles the
+# Validates the app on every push to main and every PR with contract and
+# rendered dialog regressions. The compile smoke bundles the
 # entry with esbuild to catch JSX/import breakage before it reaches the store.
 on:
   push:
@@ -22,8 +22,11 @@ jobs:
         with:
           node-version: 22
 
-      - name: Contract tests
-        run: node --test identity-contract.test.mjs
+      - name: Install test dependencies
+        run: npm ci
+
+      - name: Contract and rendered dialog tests
+        run: npm test
 
       - name: Compile smoke (entry + runtime files)
         run: |

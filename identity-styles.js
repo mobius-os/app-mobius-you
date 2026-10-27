@@ -997,6 +997,12 @@ button { user-select: none; -webkit-user-select: none; }
   }
 }
 
+.id-account-action-error {
+  display: grid;
+  justify-items: start;
+  gap: 8px;
+}
+
 .id-error,
 .id-signin-error {
   color: var(--danger, #e67a7a);
