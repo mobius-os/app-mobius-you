@@ -885,6 +885,15 @@ test('parseIdentity requires the current member_since date', () => {
   assert.throws(() => parseIdentity({ ...base, member_since: 12345 }))
 })
 
+test('an unavailable Railway read offers a labelled Try again that re-reads it', async () => {
+  const source = await readFile(new URL('./index.jsx', import.meta.url), 'utf8')
+  assert.match(source, /The Möbius account service did not return your Railway state\./)
+  assert.match(source, /onRetryRailway=\{loadRailway\}/)
+  assert.match(source, /await onRetryRailway\(\)\s+\} finally \{\s+setRetryingRailway\(false\)/)
+  assert.match(source, /onClick=\{retryRailway\}\s+disabled=\{retryingRailway\}/)
+  assert.match(source, /aria-label="Try again to load Railway controls"/)
+})
+
 test('account confirmation accepts only an https dashboard link for its own code', () => {
   assert.equal(
     accountConfirmUrl({
