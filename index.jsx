@@ -21,6 +21,7 @@ import {
 
 import {
   IdentityRequestError,
+  accountConfirmUrl,
   accountStatus,
   agentAccessPresentation,
   deploymentCanRecover,
@@ -39,6 +40,10 @@ import {
   waitForAccountLink,
 } from './identity-contract.js'
 import { IDENTITY_STYLES } from './identity-styles.js'
+
+// Raised whenever Möbius sends a deployment action to the account website, so
+// one pinned notice can offer the link wherever the button was pressed.
+const ACCOUNT_CONFIRM_EVENT = 'mobius-identity-confirm-on-account'
 
 async function identityRequest(token, path = '', options = {}) {
   let response
@@ -64,10 +69,15 @@ async function identityRequest(token, path = '', options = {}) {
     const message = typeof detail === 'string'
       ? detail
       : detail?.message || 'Identity is unavailable right now.'
+    const confirmUrl = accountConfirmUrl(detail)
+    if (confirmUrl) {
+      window.dispatchEvent(new CustomEvent(ACCOUNT_CONFIRM_EVENT, { detail: confirmUrl }))
+    }
     throw new IdentityRequestError(
       message,
       response.status,
       typeof detail?.code === 'string' ? detail.code : '',
+      confirmUrl,
     )
   }
   if (path === '/link/start') return parseLinkAttempt(body)
@@ -1332,7 +1342,7 @@ function NewDeploymentModal({
       await onCreate(settings)
       onClose()
     } catch (requestError) {
-      setError(requestError.message)
+      setError(requestError)
     } finally {
       setPending(false)
     }
@@ -1501,7 +1511,7 @@ function NewDeploymentModal({
           </div>
         )}
         {blocked && <div className="id-manage-error" role="alert">{blocked}</div>}
-        {error && <div className="id-signin-error" role="alert">{error}</div>}
+        <AccountActionError error={error} />
 
         <div className="id-composer-foot">
           <p className="id-composer-note">
@@ -2076,7 +2086,7 @@ function DeleteDeploymentModal({
       await work()
       onClose()
     } catch (requestError) {
-      setError(requestError.message)
+      setError(requestError)
     } finally {
       setPending('')
     }
@@ -2114,7 +2124,7 @@ function DeleteDeploymentModal({
           />
         )}
 
-        {error && <div className="id-signin-error" role="alert">{error}</div>}
+        <AccountActionError error={error} />
 
         {confirmDelete ? (
           <div className="id-delete-confirm">
@@ -2179,7 +2189,7 @@ function RailwayConnectionModal({
     try {
       await work()
     } catch (requestError) {
-      setError(requestError.message)
+      setError(requestError)
     } finally {
       setPending('')
     }
@@ -2230,7 +2240,7 @@ function RailwayConnectionModal({
           </div>
         </div>
 
-        {(error || connectionError) && <div className="id-signin-error" role="alert">{error || connectionError}</div>}
+        <AccountActionError error={error || connectionError} />
 
         {confirmDisconnect ? (
           <div className="id-delete-confirm">
@@ -2477,6 +2487,46 @@ function ModelVisibilityCard({ token }) {
           </div>
         )}
       </div>
+    </section>
+  )
+}
+
+function AccountConfirmLink({ url }) {
+  return (
+    <a className="id-btn id-btn--primary" href={url} target="_blank" rel="noopener noreferrer">
+      Open mobius.you <ExternalLink width={14} />
+    </a>
+  )
+}
+
+function AccountActionError({ error }) {
+  if (!error) return null
+  return (
+    <div className="id-signin-error id-account-action-error" role="alert">
+      <span>{typeof error === 'string' ? error : error.message}</span>
+      {error.confirmUrl && <AccountConfirmLink url={error.confirmUrl} />}
+    </div>
+  )
+}
+
+function AccountConfirmNotice() {
+  const [url, setUrl] = useState('')
+  useEffect(() => {
+    const show = event => setUrl(typeof event.detail === 'string' ? event.detail : '')
+    window.addEventListener(ACCOUNT_CONFIRM_EVENT, show)
+    return () => window.removeEventListener(ACCOUNT_CONFIRM_EVENT, show)
+  }, [])
+  if (!url) return null
+  return (
+    <section className="id-notice id-notice--confirm" role="status">
+      <strong>Finish this on mobius.you</strong>
+      <span>
+        For safety, Möbius can’t create, delete, resize or recover deployments, or change
+        the Railway connection, by itself.
+        Open your mobius.you dashboard, sign in, and do it there.
+      </span>
+      <AccountConfirmLink url={url} />
+      <button type="button" className="id-btn" onClick={() => setUrl('')}>Dismiss</button>
     </section>
   )
 }
@@ -2839,6 +2889,7 @@ export default function App({ appId, token }) {
             </section>
           )}
 
+          <AccountConfirmNotice />
 
           {railwayError && (
             <section className="id-notice id-notice--error" role="alert">

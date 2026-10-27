@@ -4,6 +4,12 @@
   "type": "module",
   "description": "Möbius · You — your Möbius account, profile and active deployments. A Möbius mini-app.",
   "scripts": {
-    "test": "node --test identity-contract.test.mjs"
+    "test": "node --test identity-contract.test.mjs identity-dialog.test.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "0.25.12",
+    "jsdom": "30.1.3",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
   }
 }
