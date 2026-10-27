@@ -56,12 +56,27 @@ const DELETE_CONFIRMATION_FALLBACK = (
 )
 
 export class IdentityRequestError extends Error {
-  constructor(message, status = 0, code = '') {
+  constructor(message, status = 0, code = '', confirmUrl = '') {
     super(message)
     this.name = 'IdentityRequestError'
     this.status = status
     this.code = code
+    this.confirmUrl = confirmUrl
   }
+}
+
+// Möbius never creates, deletes, resizes or recovers deployments, or changes
+// the Railway connection, itself: those
+// reach every deployment the owner has, so the owner finishes them on the
+// account website behind their own sign-in. Möbius answers with this code and
+// the dashboard address; accept only an https dashboard link.
+export const ACCOUNT_CONFIRM_CODE = 'confirm_on_account'
+
+export function accountConfirmUrl(detail) {
+  if (!detail || typeof detail !== 'object' || detail.code !== ACCOUNT_CONFIRM_CODE) return ''
+  const url = webUrl(detail.confirm_url, { httpsOnly: true })
+  if (!url || url.search || url.hash || !/\/dashboard\/?$/.test(url.pathname)) return ''
+  return url.href
 }
 
 function exactKeys(value, required, optional = []) {
