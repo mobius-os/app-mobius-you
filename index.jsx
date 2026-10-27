@@ -756,6 +756,7 @@ function Deployments({
   plansSettled,
   plansFailure,
   onRetryPlans,
+  onRetryRailway,
   selfHosted,
   onNew,
   onManage,
@@ -772,6 +773,15 @@ function Deployments({
   onManageConnection,
   connecting,
 }) {
+  const [retryingRailway, setRetryingRailway] = useState(false)
+  const retryRailway = async () => {
+    setRetryingRailway(true)
+    try {
+      await onRetryRailway()
+    } finally {
+      setRetryingRailway(false)
+    }
+  }
   const managedById = new Map((railway?.instances || []).map(item => [item.id, item]))
   // Everything per workspace comes from the workspace plans. A deployment is
   // limited by the plan of the workspace it lives in; one whose workspace is
@@ -866,8 +876,20 @@ function Deployments({
         <div className="id-railway-callout">
           <div>
             <strong>Railway controls are temporarily unavailable</strong>
-            <span>Your confirmed deployment links remain below.</span>
+            <span>The Möbius account service did not return your Railway state. Your confirmed deployment links remain below.</span>
           </div>
+          <button
+            type="button"
+            className="id-btn"
+            onClick={retryRailway}
+            disabled={retryingRailway}
+            aria-busy={retryingRailway || undefined}
+            aria-label="Try again to load Railway controls"
+          >
+            {retryingRailway
+              ? <><ArrowRotateCw className="id-spin" width={16} aria-hidden="true" /> Checking…</>
+              : 'Try again'}
+          </button>
         </div>
       )}
       {connected && plansUnreachable && (
@@ -2848,6 +2870,7 @@ export default function App({ appId, token }) {
                 token={token}
                 items={data.deployments}
                 railway={railway}
+                onRetryRailway={loadRailway}
                 selfHosted={mode === 'linked'}
               />
             </>
@@ -2942,6 +2965,7 @@ export default function App({ appId, token }) {
                 plansSettled={plansSettled}
                 plansFailure={plansFailure}
                 onRetryPlans={loadWorkspacePlans}
+                onRetryRailway={loadRailway}
                 selfHosted={mode === 'linked'}
                 onNew={() => setCreatingDeployment(true)}
                 managingDeployment={managingDeployment}
