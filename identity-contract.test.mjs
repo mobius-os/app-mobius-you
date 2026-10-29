@@ -7,18 +7,17 @@ import {
   accountStatus,
   agentAccessPresentation,
   deploymentCanRecover,
+  deploymentCanOpen,
+  dashboardUrl,
   deploymentIsBuilding,
   deploymentNeedsTracking,
   deploymentPresentation,
   formatMembershipMonth,
   parseAgentAccess,
   parseIdentity,
-  parseDeletionDiagnosis,
   parseLinkAttempt,
   parseRailway,
-  parseWorkspacePlans,
   railwayAccountChanged,
-  suggestRailwayRegion,
   waitForAccountLink,
 } from './identity-contract.js'
 
@@ -33,28 +32,21 @@ test('offers Recovery for running and failed deployments unless withheld', () =>
   }
 })
 
-test('the Recover action reveals only its Recovery section', async () => {
+test('Recovery is account-owned navigation, never a local worker start', async () => {
   const source = await readFile(new URL('./index.jsx', import.meta.url), 'utf8')
-  assert.match(source, /onClick=\{\(\) => onManage\(managed, 'recovery'\)\}/)
-  assert.match(source, /open=\{section === 'recovery' \|\| undefined\}/)
-  assert.equal((source.match(/deploymentCanRecover\(/g) || []).length, 2)
+  assert.match(source, /deploymentCanRecover\(managed\)/)
+  assert.match(source, /label="Recover"/)
+  assert.doesNotMatch(source, /function RecoverySection|recovery\/status|method: 'POST'.*recovery/)
 })
 
-test('building deployments offer a distinct cancellation path, not a live-app link', async () => {
-  for (const status of ['queued', 'creating', 'deploying']) {
-    assert.equal(deploymentIsBuilding({ status }), true, status)
-  }
-  for (const status of ['ready', 'error', 'deleting', 'deleted']) {
-    assert.equal(deploymentIsBuilding({ status }), false, status)
-  }
+test('only confirmed ready deployments can open; cancellation remains dashboard-owned', async () => {
+  for (const status of ['ready', 'active']) assert.equal(deploymentCanOpen({status}), true)
+  for (const status of ['queued','creating','deploying','error','delete_failed','deleting','deleted','unknown']) assert.equal(deploymentCanOpen({status}), false, status)
+  for (const status of ['queued','creating','deploying']) assert.equal(deploymentIsBuilding({status}), true)
   const source = await readFile(new URL('./index.jsx', import.meta.url), 'utf8')
-  assert.match(source, /item\.url && !item\.current && !building/)
-  assert.doesNotMatch(source, /onManage\(managed, 'resources'\)/)
+  assert.match(source, /disabled=\{!canOpen\}/)
   assert.match(source, /building \? 'Cancel deployment' : 'Delete'/)
-  assert.match(source, /cancellingBuild \? 'Keep building' : 'Keep deployment'/)
-  assert.match(source, /If Railway has created a project and storage volume, they will be removed/)
-  assert.match(source, /cancellingBuild \? 'Cancel and remove' : 'Delete permanently'/)
-  assert.match(source, /onDelete=\{id => railwayAction\(`\/deployments\/\$\{id\}`, \{ method: 'DELETE' \}\)\}/)
+  assert.doesNotMatch(source, /function DeleteDeploymentModal|\/railway\/disconnect|\/deployments\/\$\{id\}.*method: 'DELETE'/)
 })
 
 test('membership months do not shift across local time zones', () => {
@@ -376,151 +368,12 @@ test('accepts a connection of only connected and account and ignores the old sav
   }))
 })
 
-test('suggests a nearby single region from time zone and gates region controls', () => {
-  assert.equal(suggestRailwayRegion('Europe/London', 60), 'europe-west4-drams3a')
-  assert.equal(suggestRailwayRegion('America/Los_Angeles', -420), 'us-west2')
-  assert.equal(suggestRailwayRegion('America/Chicago', -360), 'us-east4-eqdc4a')
-  assert.equal(suggestRailwayRegion('Asia/Singapore', 480), 'asia-southeast1-eqsg3a')
-  assert.equal(suggestRailwayRegion('Etc/UTC', 0), '')
-  const base = {
-    railway_access: 'available',
-    connection: {
-      connected: true, account: 'owner@example.com',
-    },
-    instances: [],
-  }
-  assert.equal(parseRailway(base).connection.region_options, undefined)
-  const regions = [
-    ['us-west2', 'US West'], ['us-east4-eqdc4a', 'US East'],
-    ['europe-west4-drams3a', 'Europe'], ['asia-southeast1-eqsg3a', 'Asia Pacific'],
-  ].map(([id, label]) => ({ id, label }))
-  const advertised = parseRailway({
-    ...base, connection: { ...base.connection, region_options: regions },
-  })
-  assert.deepEqual(advertised.connection.region_options, regions)
-  const malformed = parseRailway({
-    ...base, connection: { ...base.connection, region_options: [{ id: 'unknown', label: 'No' }] },
-  })
-  assert.equal(malformed.connection.region_options, undefined)
-})
-
-test('validates per-workspace plan data strictly', () => {
-  const limits = {
-    cpu_choices: [1, 2, 4],
-    max_cpu: 4,
-    default_cpu: 2,
-    memory_options_mb: [512, 1024, 2048],
-    max_memory_mb: 2048,
-    default_memory_mb: 1024,
-    volume_options_mb: [500, 1000],
-    default_volume_mb: 500,
-    included_usd: 5,
-  }
-  const entry = (id, patch = {}) => ({
-    id, name: `Workspace ${id}`, plan: 'hobby', deploy_blocked: '', plan_limits: limits, ...patch,
-  })
-  const valid = { workspaces: [entry('a'), entry('b', { plan: 'unknown' }), entry('c', { plan: 'enterprise' })] }
-  assert.equal(parseWorkspacePlans(valid), valid)
-  // Every plan field the form reads is validated, so a drifted payload fails here, not mid-render.
-  for (const patch of [{ included_usd: undefined }, { included_usd: -1 }, { default_cpu: 0 }, { default_memory_mb: '1024' }]) {
-    assert.throws(() => parseWorkspacePlans({ workspaces: [entry('a', { plan_limits: { ...limits, ...patch } })] }), /invalid Railway workspace plans/)
-  }
-  assert.doesNotThrow(() => parseWorkspacePlans({ workspaces: [entry('a', { plan_limits: { ...limits, included_usd: null } })] }))
-  // There is no saved default workspace: a `current` key is not part of the contract.
-  assert.throws(() => parseWorkspacePlans({ ...valid, current: 'b' }))
-  assert.throws(() => parseWorkspacePlans({ workspaces: [], current: null }))
-
-  const rejected = [
-    { ...valid, extra: true },
-    { current: 'a' },
-    { ...valid, workspaces: 'a' },
-    { ...valid, workspaces: [{ ...entry('a'), extra: 1 }] },
-    { ...valid, workspaces: [{ id: 'a', name: 'A', plan: 'hobby', deploy_blocked: '' }] },
-    { ...valid, workspaces: [entry('a', { id: 7 })] },
-    { ...valid, workspaces: [entry('')] },
-    { ...valid, workspaces: [entry('a', { name: '' })] },
-    { ...valid, workspaces: [entry('a', { plan: 'platinum' })] },
-    { ...valid, workspaces: [entry('a', { deploy_blocked: null })] },
-    { ...valid, workspaces: [entry('a', { plan_limits: { ...limits, max_cpu: '4' } })] },
-    { ...valid, workspaces: [entry('a', { plan_limits: null })] },
-    { ...valid, workspaces: [entry('a'), entry('a')] },
-    { ...valid, workspaces: Array.from({ length: 101 }, (_, i) => entry(`w${i}`)) },
-    { ...valid, workspaces: [entry('x'.repeat(129))] },
-    { ...valid, workspaces: [entry('a', { name: 'x'.repeat(129) })] },
-    { ...valid, workspaces: [entry('a', { deploy_blocked: 'x'.repeat(1001) })] },
-  ]
-  for (const value of rejected) assert.throws(() => parseWorkspacePlans(value))
-  // Characters, not UTF-16 units: 128 emoji are 256 units and must be accepted.
-  const emoji = '\u{1F600}'
-  const wide = { workspaces: [entry('a', { name: emoji.repeat(128), deploy_blocked: emoji.repeat(1000) })] }
-  assert.equal(parseWorkspacePlans(wide), wide)
-  assert.throws(() => parseWorkspacePlans({ workspaces: [entry('a', { name: emoji.repeat(129) })] }))
-  assert.throws(() => parseWorkspacePlans({ workspaces: [entry('a', { deploy_blocked: emoji.repeat(1001) })] }))
-  const maximal = { workspaces: Array.from({ length: 100 }, (_, i) => entry(`w${i}`)) }
-  assert.equal(parseWorkspacePlans(maximal), maximal)
-})
-
-test('the create form owns the workspace and always sends it', async () => {
-  const source = await readFile(new URL('./index.jsx', import.meta.url), 'utf8')
-  // Plans load after the deployments are shown, never from quiet polling.
-  assert.match(source, /identityRequest\(token, '\/railway\/workspace-plans'\)/)
-  assert.match(source, /if \(!quiet\) void loadWorkspacePlans\(\)/)
-  assert.doesNotMatch(source, /Promise\.all\(\[\s*identityRequest\(token, '\/railway\?region_options/)
-  // A transient failure keeps the plans held; a definitive one clears them.
-  // Only a missing route or an unparseable payload asks for an update; a sign-in or
-  // reconnect answer (401/409) and an outage show what the host said, with a retry.
-  assert.match(source, /\[404, 405\]\.includes\(requestError\.status\)/)
-  assert.doesNotMatch(source, /\[404, 405, 409, 422\]/)
-  assert.match(source, /setPlansFailure\(definitive \? '' : requestError\.message\)/)
-  assert.match(source, /<span>\{plansFailure\} Existing deployments keep working\.<\/span>/)
-  // The starting workspace skips a deployment that is being deleted, like the website.
-  assert.match(source, /instance\.workspace_id && instance\.status !== 'deleting'/)
-  assert.match(source, /if \(definitive\) setWorkspacePlans\(null\)/)
-  assert.match(source, /const route = path\.split\(.\?.\)\[0\]/)
-  assert.match(source, /Could not load your Railway workspaces/)
-  // The workspace in use is derived on every render, so it is always what is sent.
-  assert.match(source, /\[chosenWorkspaceId, preferredWorkspaceId\]/)
-  assert.match(source, /\.find\(Boolean\) \|\| workspaces\?\.\[0\]/)
-  assert.match(source, /settings\.workspace_id = workspace\.id/)
-  assert.doesNotMatch(source, /if \(workspace\) settings\.workspace_id/)
-  // First connect and account change drop old plans and load the new account's.
-  assert.match(source, /setWorkspacePlans\(null\)\s+setPlansSettled\(false\)\s+setPlansFailure\(''\)\s+void loadWorkspacePlans\(\)/)
-  // A possibly stale blocked notice never disables creating: the launcher re-checks live.
-  assert.doesNotMatch(source, /Boolean\(blocked\)/)
-  assert.doesNotMatch(source, /!name\.trim\(\) \|\| blocked/)
-})
-
 test('legacy connection-wide workspace handling is gone', async () => {
   const source = await readFile(new URL('./index.jsx', import.meta.url), 'utf8')
   assert.doesNotMatch(source, /workspaceChosenOnCreate|reloadWorkspaces|workspaceSequenceRef/)
   assert.doesNotMatch(source, /\/railway\/workspaces|'\/railway\/workspace'/)
   assert.doesNotMatch(source, /connection\??\.(plan_limits|plan|workspace|deploy_blocked)\b/)
   assert.doesNotMatch(source, /connectionLimits|connectionPlan/)
-})
-
-test('without workspace plans the app asks for an update and offers no new deployment', async () => {
-  const source = await readFile(new URL('./index.jsx', import.meta.url), 'utf8')
-  assert.match(source, /Update Möbius to choose a Railway workspace\./)
-  assert.match(source, /connected && plansMissing/)
-  assert.match(source, /connected && \(workspaceList \|\| !plansSettled\)/)
-  assert.match(source, /disabled=\{!name\.trim\(\) \|\| !workspace \|\| pending\}/)
-})
-
-test('the header and banner describe the workspaces that matter', async () => {
-  const source = await readFile(new URL('./index.jsx', import.meta.url), 'utf8')
-  assert.match(source, /const severalWorkspaces = workspaceList\?\.length > 1/)
-  assert.match(source, /instance\.workspace_id === item\.id/)
-  assert.match(source, /`Railway connected · \$\{workspaceList\.length\} workspaces`/)
-  assert.match(source, /`Railway workspace connected · \$\{workspaceList\[0\]\.name\}`/)
-  assert.match(source, /workspaceList\?\.length === 1 && planTitle\(workspaceList\[0\]\.plan\)/)
-})
-
-test('zero shared workspaces get their own notice, not the update notice', async () => {
-  const source = await readFile(new URL('./index.jsx', import.meta.url), 'utf8')
-  assert.match(source, /const noWorkspaces = Boolean\(plansSettled\) && workspaceList\?\.length === 0/)
-  assert.match(source, /Railway did not share a workspace\./)
-  assert.match(source, /disabled=\{!workspaceList\?\.length\}/)
-  assert.match(source, /setWorkspacePlans\(plans\)/)
 })
 
 test('a deployment may name its workspace, and a malformed value only loses that', () => {
@@ -542,25 +395,24 @@ test('a deployment may name its workspace, and a malformed value only loses that
   assert.throws(() => parse({ ...base, other: 1 }))
 })
 
-test('resource limits follow the deployment\'s own workspace', async () => {
+test('resource summaries use the deployment inventory, not another workspace ceiling', async () => {
   const source = await readFile(new URL('./index.jsx', import.meta.url), 'utf8')
-  assert.match(source, /workspaceList\?\.find\(item => item\.id === instance\.workspace_id\)/)
-  assert.match(source, /workspaceList\?\.length === 1 \? workspaceList\[0\] : undefined/)
-  assert.match(source, /planLimits=\{limitsFor\(managed\)\}/)
+  assert.match(source, /resourceSummary\(managed\.resources\)/)
+  assert.match(source, /label="Change on mobius.you"/)
+  assert.doesNotMatch(source, /function ResourceFields|onCompute|onStorage/)
 })
 
-test('opts into region choices through the platform inventory bridge', async () => {
+test('opts into the configured dashboard address without unused creation metadata', async () => {
   const source = await readFile(new URL('./index.jsx', import.meta.url), 'utf8')
-  assert.match(source, /identityRequest\(token, '\/railway\?region_options=1&workspace_ids=1'\)/)
+  assert.match(source, /identityRequest\(token, '\/railway\?dashboard=1'\)/)
 })
 
-test('shows advertised region choice without plan limits and reloads plans after account replacement', async () => {
+test('account replacement still waits for authoritative inventory', async () => {
   const source = await readFile(new URL('./index.jsx', import.meta.url), 'utf8')
-  assert.match(source, /\(planLimits \|\| regionOptions\?\.length > 0\)/)
   assert.match(source, /return next\s*\n\s*}\s*\n\s*if \(popup\.closed\)/)
 })
 
-test('accepts advertised image-update controls without requiring them from older hosts', () => {
+test('retains image-update status but discards retired authoring capabilities', () => {
   const base = {
     railway_access: 'available',
     connection: {
@@ -624,20 +476,6 @@ test('presents deletion failures as deletion recovery, never as a build retry', 
   assert.equal(deploymentPresentation({ status: 'future_state' }).tone, 'muted')
 })
 
-test('accepts only bounded deletion recovery state', () => {
-  const diagnosis = {
-    state: 'missing_unconfirmed',
-    message: 'Railway says this project may already be gone.',
-    can_confirm_absent: true,
-  }
-  assert.equal(parseDeletionDiagnosis(diagnosis), diagnosis)
-  assert.throws(() => parseDeletionDiagnosis({ ...diagnosis, state: 'deleted' }))
-  assert.throws(() => parseDeletionDiagnosis({ ...diagnosis, state: 'present' }))
-  assert.throws(() => parseDeletionDiagnosis({ ...diagnosis, can_confirm_absent: false }))
-  assert.throws(() => parseDeletionDiagnosis({ ...diagnosis, message: 'x'.repeat(361) }))
-  assert.throws(() => parseDeletionDiagnosis({ ...diagnosis, extra: true }))
-})
-
 test('tracks only Railway states that can settle without another owner action', () => {
   for (const status of ['queued', 'creating', 'deploying', 'deleting']) {
     assert.equal(deploymentNeedsTracking({ status }), true)
@@ -666,50 +504,26 @@ test('keeps container replacement in Möbius Settings instead of deployment cont
   assert.match(source, /Container updates stay in the normal Settings flow/)
 })
 
-test('keeps Resources below each eligible deployment without a redundant Manage action', async () => {
+test('keeps resource information and rename local while protected edits navigate away', async () => {
   const source = await readFile(new URL('./index.jsx', import.meta.url), 'utf8')
-  const manageStart = source.indexOf('function ManageDeploymentPanel(')
-  const manageEnd = source.indexOf('function DeleteDeploymentModal(', manageStart)
-  const manageSource = source.slice(manageStart, manageEnd)
-
   assert.match(source, /function DeploymentNameEditor\(/)
-  assert.match(source, /<Pencil width=\{14\}/)
   assert.match(source, /onSave=\{name => onRename\(managed\.id, \{ name \}\)\}/)
-  assert.match(source, /managed && \(managed\.actions\.edit_resources/)
-  assert.doesNotMatch(source, /onManage\(managed, 'resources'\)/)
-  assert.doesNotMatch(source, /\{state\.actionLabel\}/)
-  assert.match(source, /managed\.railway_url && \(/)
-  assert.match(source, /<Lifesaver width=\{14\}/)
-  assert.match(source, /<Trash width=\{14\}/)
-  assert.doesNotMatch(manageSource, /id-modal-backdrop|role="dialog"/)
-  assert.doesNotMatch(manageSource, /DeploymentMetrics|DeploymentNameEditor|Delete deployment/)
-  assert.match(manageSource, /<span className="id-disclosure-title">Resources<\/span>/)
-  assert.match(manageSource, /section === 'recovery' && deploymentCanRecover\(instance\)/)
-  assert.match(manageSource, /<ResourceFields/)
-  assert.match(manageSource, /<RecoverySection/)
-  assert.match(manageSource, /instance\.status !== 'delete_failed' && instance\.actions\.retry/)
-  assert.match(manageSource, /onRetry\(instance\.id\)/)
-  assert.match(manageSource, /Review increase/)
-  assert.match(manageSource, /Update compute/)
-  assert.match(manageSource, /Attached storage can only be increased, not reduced\./)
-  assert.match(manageSource, /volume_options_mb\.find\(value => value > current\)/)
-  assert.match(manageSource, /setConfirmVolume\(Number\(volume\)\)/)
-  assert.match(manageSource, /This volume can only grow\. You won’t be able to reduce it later\./)
-  assert.match(manageSource, /onStorage\(instance\.id, \{ volume_mb: confirmVolume \}\)/)
-  assert.match(source, /onRetry=\{id => railwayAction\(`\/deployments\/\$\{id\}\/retry`/)
+  assert.match(source, /managed\.actions\.edit_resources/)
+  assert.match(source, /resourceSummary\(managed\.resources\)/)
+  assert.doesNotMatch(source, /function ManageDeploymentPanel|function RecoverySection|function DeleteDeploymentModal|function NewDeploymentModal/)
 })
 
 test('refreshes visible deployment metrics without opening management', async () => {
   const source = await readFile(new URL('./index.jsx', import.meta.url), 'utf8')
   const metricsStart = source.indexOf('function DeploymentMetrics(')
-  const metricsEnd = source.indexOf('function RecoverySection(', metricsStart)
+  const metricsEnd = source.indexOf('function RailwayConnectionModal(', metricsStart)
   const metricsSource = source.slice(metricsStart, metricsEnd)
 
   assert.match(metricsSource, /setTimeout\(refresh, 15000\)/)
   assert.match(metricsSource, /controller === requestController/)
   assert.match(metricsSource, /visibilitychange/)
   assert.match(metricsSource, /window\.addEventListener\('focus', resume\)/)
-  assert.match(source, /managed\?\.status === 'ready'[\s\S]*?<DeploymentMetrics token=\{token\} instance=\{managed\} compact/)
+  assert.match(source, /managed\?\.status === 'ready'[\s\S]*?<DeploymentMetrics token=\{token\} instance=\{managed\}/)
 })
 
 test('lists only deployments the account service already knows', async () => {
@@ -731,17 +545,16 @@ test('lists only deployments the account service already knows', async () => {
 
   assert.doesNotMatch(source, /\/railway\/deployments\/adopt-current/)
   assert.doesNotMatch(source, /Hosted with Railway/)
-  assert.match(source, /Railway workspace connected/)
+  assert.match(source, /Railway connected/)
   assert.match(source, /managedByOrigin\.get\(deploymentOrigin\(item\.url\)\)/)
-  assert.match(source, /deploymentCanRecover\(instance\)/)
+  assert.match(source, /deploymentCanRecover\(managed\)/)
 })
 
 test('changing Railway account waits for a different connected account', async () => {
   const source = await readFile(new URL('./index.jsx', import.meta.url), 'utf8')
   assert.match(source, /Railway account<\/h2>/)
   assert.match(source, /Manage plan on Railway/)
-  assert.match(source, /'\/railway\/plan\/refresh'/)
-  assert.match(source, /'Refresh plans'/)
+  assert.doesNotMatch(source, /\/railway\/plan\/refresh|Refresh plans/)
   assert.match(source, /Change hosting account/)
   const previous = 'first@example.com'
   assert.equal(railwayAccountChanged(previous, null), false)
@@ -753,13 +566,12 @@ test('changing Railway account waits for a different connected account', async (
   assert.doesNotMatch(source, /onClick=\{\(\) => \{ onClose\(\); onChangeAccount\(\) \}\}/)
 })
 
-test('wires deletion recovery through the reviewed server confirmation path', async () => {
+test('failed cards offer manual record-removal navigation, never automatic or local removal', async () => {
   const source = await readFile(new URL('./index.jsx', import.meta.url), 'utf8')
-
-  assert.match(source, /`\/railway\/deployments\/\$\{instance\.id\}\/deletion`/)
-  assert.match(source, /diagnosis\?\.can_confirm_absent && !confirmRecord/)
-  assert.match(source, /`\/deployments\/\$\{id\}\/confirm-absent`/)
-  assert.match(source, /JSON\.stringify\(\{ confirmed_absent: true \}\)/)
+  assert.match(source, /\['error', 'delete_failed'\]\.includes\(managed\?\.status\)/)
+  assert.match(source, /label="Remove from dashboard"/)
+  assert.match(source, /hidden project may still be running and billed/)
+  assert.doesNotMatch(source, /confirm-absent|function DeletionRecoverySection/)
 })
 
 test('broker registers before navigation and accepts only the parent-forwarded result', async () => {
@@ -915,4 +727,35 @@ test('account confirmation accepts only an https dashboard link for its own code
   ]) {
     assert.equal(accountConfirmUrl(detail), '')
   }
+})
+
+test('dashboard address is an optional safe extension, not a hard-coded account host', () => {
+  const base = {railway_access:'available',connection:null,instances:[]}
+  assert.equal(parseRailway({...base}).dashboard_url,undefined)
+  const url='https://accounts.example.test/dashboard'
+  assert.equal(parseRailway({...base,dashboard_url:url}).dashboard_url,url)
+  for(const bad of ['http://accounts.example.test/dashboard','javascript:alert(1)','https://name:pass@accounts.example.test/dashboard','https://accounts.example.test/other','https://accounts.example.test/dashboard?next=other','https://accounts.example.test/dashboard#other',{}]) {
+    assert.equal(dashboardUrl(bad),'')
+    assert.equal(parseRailway({...base,dashboard_url:bad}).dashboard_url,undefined)
+  }
+})
+
+
+test('discards legacy creation metadata without hiding deployments or connection', () => {
+  for (const value of [null, 'drifted', { future: true }]) {
+    const connection = { connected: true, account: 'owner@example.test' }
+    const extensions = ['workspace', 'plan', 'deploy_blocked', 'plan_limits',
+      'update_policies', 'adopt_current', 'region_options']
+    const wire = Object.fromEntries(extensions.map(key => [key, value]))
+    const parsed = parseRailway({ railway_access: 'available', instances: [],
+      connection: { ...connection, ...wire } })
+    assert.deepEqual(parsed.connection, connection)
+  }
+})
+
+test('deployment authoring has no duplicate workspace/region/plan state in the app', async () => {
+  const source = await readFile(new URL('./index.jsx', import.meta.url), 'utf8')
+  assert.doesNotMatch(source, /workspace-plans|workspace_ids|loadWorkspacePlans|plansSequenceRef|Refresh plans/)
+  assert.match(source, /label="New deployment"/)
+  assert.match(source, /resourceSummary\(managed\.resources\)/)
 })

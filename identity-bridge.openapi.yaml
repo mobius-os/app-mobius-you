@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Möbius local identity bridge
-  version: 2.2.0
+  version: 2.3.0
   description: The only identity contract exposed to the mini-app. Every route requires the app's reviewed identity_manage capability.
 paths:
   /api/identity:
@@ -146,12 +146,14 @@ paths:
         requested with query flags and ignored by hosts that predate them:
         region_options=1 adds the connection's region choices, and
         workspace_ids=1 adds each deployment's workspace_id (null until the host
-        has recorded it) so the resource editor can use that workspace's plan
-        limits. Without the flags the response keeps its original shape.
+        has recorded it). dashboard=1 adds a validated dashboard_url from the
+        configured account origin for upfront owner-session handoffs. Without
+        the flags the response keeps its original shape.
       security: [{ appBearer: [] }]
       parameters:
         - { name: region_options, in: query, required: false, schema: { type: string, enum: ['1'] } }
         - { name: workspace_ids, in: query, required: false, schema: { type: string, enum: ['1'] } }
+        - { name: dashboard, in: query, required: false, schema: { type: string, enum: ['1'] } }
       responses:
         '200': { description: The Railway connection and deployments. }
         '401': { $ref: '#/components/responses/Unauthenticated' }
@@ -160,10 +162,10 @@ paths:
       operationId: readRailwayWorkspacePlans
       description: >-
         Lists each authorized Railway workspace with its own plan, deploy-blocked
-        notice, and plan limits so the create form can choose a workspace itself.
-        Requires the reviewed railway_manage grant. Platforms and launchers that
-        predate the route fail it; the app then asks the owner to update Möbius
-        and offers no new deployment.
+        notice, and plan limits for deployment observability. Creation chooses its workspace on the account dashboard.
+        Requires the reviewed railway_manage grant. Older hosts may lack this route.
+        The Identity app no longer requests this creation metadata; the account
+        dashboard remains authoritative.
       security: [{ appBearer: [] }]
       responses:
         '200':
@@ -173,31 +175,22 @@ paths:
   /api/identity/railway/deployments:
     post:
       operationId: createRailwayDeployment
-      description: >-
-        Creates a deployment in the chosen Railway workspace. Only the fields
-        below are described here. There is no default workspace: workspace_id
-        is required.
+      description: Authenticates, then refuses with confirm_on_account. Create on the signed-in account dashboard; no deployment is queued here.
       security: [{ appBearer: [] }]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [name, workspace_id]
-              properties:
-                name: { type: string, minLength: 1, maxLength: 80 }
-                managed_auth: { type: boolean }
-                cpu: { type: [integer, 'null'] }
-                memory_mb: { type: [integer, 'null'] }
-                volume_mb: { type: [integer, 'null'] }
-                update_policy: { type: string, enum: [automatic, manual] }
-                region: { type: string }
-                workspace_id: { type: string, minLength: 1, maxLength: 128 }
       responses:
-        '202': { description: The deployment was queued. }
+        '409': { description: 'detail contains code confirm_on_account, a message and confirm_url naming the configured account dashboard.' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
-        '422': { description: A field is invalid, for example a missing or blank workspace_id. }
+  /api/identity/railway/deployments/{instance_id}/metrics:
+    get:
+      operationId: readRailwayDeploymentMetrics
+      description: Returns bounded display-only runtime and CPU/RAM/storage/network metrics. Optional cost has heading (max 200), note (max 360), percent (max 40); absent or headingless cost is unknown, not zero.
+      security: [{ appBearer: [] }]
+      parameters:
+        - { name: instance_id, in: path, required: true, schema: { type: string } }
+        - { name: cost, in: query, required: false, schema: { type: string, enum: ['1'] } }
+      responses:
+        '200': { description: Resource metrics with optional cost only when requested and supported. }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
   /api/identity/railway/plan/refresh:
     post:
       operationId: refreshRailwayPlans
