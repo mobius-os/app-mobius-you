@@ -11,17 +11,16 @@ import {
   CheckCircle,
   ChevronRight,
   ExternalLink,
-  Lifesaver,
   Lock,
   Pencil,
-  Plus,
-  Trash,
   Warning,
 } from '@openai/apps-sdk-ui/components/Icon'
 
 import {
   IdentityRequestError,
   accountConfirmUrl,
+  dashboardUrl,
+  deploymentCanOpen,
   accountStatus,
   agentAccessPresentation,
   deploymentCanRecover,
@@ -29,14 +28,12 @@ import {
   deploymentNeedsTracking,
   deploymentPresentation,
   formatMembershipMonth,
-  parseDeletionDiagnosis,
   parseAgentAccess,
   parseIdentity,
   parseLinkAttempt,
   parseRailway,
   parseWorkspacePlans,
   railwayAccountChanged,
-  suggestRailwayRegion,
   waitForAccountLink,
 } from './identity-contract.js'
 import { IDENTITY_STYLES } from './identity-styles.js'
@@ -758,6 +755,30 @@ function DisconnectModal({ token, onClose, onDisconnected, reconnecting = false 
   )
 }
 
+function DashboardAction({ url, label, ariaLabel, className = 'id-btn' }) {
+  const target = dashboardUrl(url)
+  if (!target) {
+    return <button type="button" className={className} disabled title="Update Möbius to open your account dashboard">{label}</button>
+  }
+  return (
+    <a className={className} href={target} target="_blank" rel="noopener noreferrer" aria-label={ariaLabel || `${label} (opens in a new tab)`}>
+      {label} <ExternalLink width={14} aria-hidden="true" />
+    </a>
+  )
+}
+
+function planTitle(label) {
+  return ({ trial: 'Trial', free: 'Free', hobby: 'Hobby', pro: 'Pro', enterprise: 'Enterprise' })[label] || ''
+}
+
+function resourceSummary(resources) {
+  return [
+    resources.cpu ? `${resources.cpu} vCPU` : 'Plan CPU limit',
+    resources.memory_mb ? `${resources.memory_mb} MB RAM` : 'Plan RAM limit',
+    resources.volume_size_mb ? `${resources.volume_size_mb} MB storage` : '',
+  ].filter(Boolean).join(' · ')
+}
+
 function Deployments({
   token,
   items,
@@ -768,16 +789,7 @@ function Deployments({
   onRetryPlans,
   onRetryRailway,
   selfHosted,
-  onNew,
-  onManage,
-  managingDeployment,
-  managingSection,
-  onCloseManage,
-  onCompute,
-  onStorage,
-  onRetry,
   onRename,
-  onDelete,
   onConnect,
   onReconnect,
   onManageConnection,
@@ -792,21 +804,13 @@ function Deployments({
       setRetryingRailway(false)
     }
   }
+  const dashboard = railway?.dashboard_url
   const managedById = new Map((railway?.instances || []).map(item => [item.id, item]))
-  // Everything per workspace comes from the workspace plans. A deployment is
-  // limited by the plan of the workspace it lives in; one whose workspace is
-  // not recorded can only be placed when there is exactly one workspace.
   const workspaceList = workspacePlans?.workspaces
   const severalWorkspaces = workspaceList?.length > 1
-  const limitsFor = instance => (
-    instance.workspace_id
-      ? workspaceList?.find(item => item.id === instance.workspace_id)
-      : (workspaceList?.length === 1 ? workspaceList[0] : undefined)
-  )?.plan_limits
   // With several workspaces the header names the count and the attention banner
-  // lists the blocked workspaces that actually host one of these deployments
-  // (the create form shows its own workspace's notice). With one workspace it
-  // is that workspace's own state, even before it hosts anything.
+  // lists blocked workspaces that actually host one of these deployments.
+  // With one workspace it is that workspace's own state, even before it hosts anything.
   const blockedWorkspaces = (workspaceList || []).filter(item => item.deploy_blocked
     && (!severalWorkspaces
       || (railway?.instances || []).some(instance => instance.workspace_id === item.id)))
@@ -873,7 +877,7 @@ function Deployments({
             <strong>{railway.connection ? 'Reconnect Railway' : 'Connect Railway'}</strong>
             <span>{railway.connection
               ? 'Railway authorization needs attention before this account can manage deployments.'
-              : 'Connect your Railway account to create and manage Möbius deployments here.'}</span>
+              : 'Connect Railway to view your deployments here. Changes happen on mobius.you.'}</span>
           </div>
           <button type="button" className="id-btn id-btn--primary" onClick={onConnect} disabled={connecting}>
             {connecting
@@ -914,8 +918,8 @@ function Deployments({
       {connected && plansMissing && (
         <div className="id-railway-callout">
           <div>
-            <strong>Update Möbius to choose a Railway workspace.</strong>
-            <span>New deployments are unavailable until then. Your existing deployments keep working.</span>
+            <strong>Workspace details are unavailable on this Möbius.</strong>
+            <span>Your deployments and account dashboard remain available.</span>
           </div>
         </div>
       )}
@@ -923,7 +927,7 @@ function Deployments({
         <div className="id-railway-callout">
           <div>
             <strong>Railway did not share a workspace.</strong>
-            <span>Reconnect Railway and share a workspace to create deployments.</span>
+            <span>Reconnect Railway and share a workspace, or manage deployments on mobius.you.</span>
           </div>
         </div>
       )}
@@ -942,6 +946,8 @@ function Deployments({
           const managed = managedById.get(item.id)
             || managedByOrigin.get(deploymentOrigin(item.url))
           const building = deploymentIsBuilding(managed)
+          const canOpen = deploymentCanOpen(managed || item)
+          const failed = ['error', 'delete_failed'].includes(managed?.status)
           const displayName = managed?.name || item.name
           const state = deploymentPresentation(managed || item)
           const StateIcon = state.tone === 'success'
@@ -993,7 +999,7 @@ function Deployments({
                   )}
                   {state.label}
                 </span>
-                {!managed && item.url && !item.current && (
+                {!managed && item.url && !item.current && canOpen && (
                   <button
                     type="button"
                     className="id-open"
@@ -1009,11 +1015,12 @@ function Deployments({
               // One labelled action row, matching the mobius.you dashboard:
               // compact enough to share a phone-width row, never icon-only.
               <div className={`id-deploy-buttons${building ? ' id-deploy-buttons--building' : ''}`}>
-                {item.url && !item.current && !building && (
+                {item.url && !item.current && (
                   <button
                     type="button"
                     className="id-btn id-btn--primary"
                     aria-label={`Open ${displayName} in a new tab`}
+                    disabled={!canOpen}
                     onClick={() => window.open(item.url, '_blank', 'noopener,noreferrer')}
                   >
                     <ExternalLink width={14} aria-hidden="true" />
@@ -1021,68 +1028,47 @@ function Deployments({
                   </button>
                 )}
                 {managed.railway_url && (
-                  <a
-                    className="id-btn"
-                    href={managed.railway_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    aria-label={`Open ${displayName} project on Railway in a new tab`}
-                  >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 15h12M6 19h12m-10 0-2 3m10-3 2 3M8 3h8M8 7h8"/><rect x="5" y="3" width="14" height="16" rx="2"/><circle cx="9" cy="12" r="1"/><circle cx="15" cy="12" r="1"/></svg>
-                    Railway
-                  </a>
+                  managed.status === 'deleting'
+                    ? <button type="button" className="id-btn" disabled>Railway</button>
+                    : <a className="id-btn" href={managed.railway_url} target="_blank" rel="noopener noreferrer">Railway <ArrowUpRight width={14} /></a>
                 )}
                 {deploymentCanRecover(managed) && (
-                  <button
-                    type="button"
-                    className="id-btn"
-                    aria-label={`Recover ${displayName}`}
-                    onClick={() => onManage(managed, 'recovery')}
-                  >
-                    <Lifesaver width={14} aria-hidden="true" />
-                    Recover
-                  </button>
+                  <DashboardAction url={dashboard} label="Recover" ariaLabel={`Recover ${displayName} on mobius.you`} />
                 )}
-                {managed.actions.delete && onDelete && (
-                  <button
-                    type="button"
-                    className="id-btn id-btn--danger"
-                    aria-label={building ? `Cancel deployment of ${displayName}` : `Delete ${displayName}`}
-                    onClick={() => onDelete(managed)}
-                  >
-                    <Trash width={14} aria-hidden="true" />
-                    {building ? 'Cancel deployment' : 'Delete'}
-                  </button>
+                {managed.actions.retry && failed && (
+                  <DashboardAction url={dashboard} label={managed.status === 'delete_failed' ? 'Try delete again' : 'Try again'} />
+                )}
+                {managed.actions.delete && (
+                  <DashboardAction url={dashboard} label={building ? 'Cancel deployment' : 'Delete'} className="id-btn id-btn--danger" />
                 )}
               </div>
             )}
             {managed?.status === 'ready' && (
               <DeploymentMetrics token={token} instance={managed} compact />
             )}
-            {managed && (managed.actions.edit_resources
-              || (managed.actions.retry && !building)
-              || (managingDeployment?.id === managed.id && managingSection === 'recovery')) && (
-              <ManageDeploymentPanel
-                key={`${managed.id}:${managingDeployment?.id === managed.id ? managingSection : 'resources'}:${managed.resources.cpu}:${managed.resources.memory_mb}:${managed.resources.volume_size_mb}`}
-                instance={managed}
-                section={managingDeployment?.id === managed.id ? managingSection : null}
-                token={token}
-                planLimits={limitsFor(managed)}
-                onClose={onCloseManage}
-                onCompute={onCompute}
-                onStorage={onStorage}
-                onRetry={onRetry}
-              />
+            {managed?.actions.edit_resources && (
+              <div className="id-deployment-resources">
+                <div><strong>Resources</strong><span>{resourceSummary(managed.resources)}</span></div>
+                <DashboardAction url={dashboard} label="Change on mobius.you" />
+              </div>
+            )}
+            {failed && (
+              <div className="id-deployment-resources">
+                <div><strong>Project already deleted in Railway?</strong><span>Remove only its dashboard card after checking. A hidden project may still be running and billed.</span></div>
+                <DashboardAction url={dashboard} label="Remove from dashboard" />
+              </div>
             )}
           </div>
           )
         })}
       </div>
-      {connected && (workspaceList || !plansSettled) && (
-        <button type="button" className="id-add-row" disabled={!workspaceList?.length} onClick={onNew}>
-          <span className="id-add-plus" aria-hidden="true"><Plus width={17} /></span>
-          New deployment
-        </button>
+      {(dashboard || railway?.railway_access === 'available') && (
+        <div className="id-dashboard-handoff">
+          <strong>Deployment changes happen on mobius.you</strong>
+          <p>Create, retry, resize, recover or delete a deployment on your account dashboard, behind your own sign-in. Container updates stay in the normal Settings flow.</p>
+          <DashboardAction url={dashboard} label="New deployment" />
+          {!dashboard && <p>Update Möbius to open your configured account dashboard from here.</p>}
+        </div>
       )}
       {connected && railway.connection && (
         <div className="id-dep-foot">
@@ -1187,350 +1173,6 @@ function DeploymentNameEditor({ name, disabled, onSave }) {
   )
 }
 
-function fmtCpu(n) {
-  return `${n} vCPU`
-}
-
-function fmtMemory(mb) {
-  return mb % 1024 === 0 ? `${mb / 1024} GB` : `${mb} MB`
-}
-
-function fmtVolume(mb) {
-  return mb < 1000 ? `${mb} MB` : `${mb / 1000} GB`
-}
-
-function planTitle(label) {
-  if (!label || label === 'unknown') return ''
-  return label.charAt(0).toUpperCase() + label.slice(1)
-}
-
-// Plan-bounded CPU / RAM / (optional) storage pickers, mirroring the resource
-// choices the mobius.you website offers. `limits` is the plan_limits of the
-// deployment's workspace; when it is absent the component renders nothing so the modal
-// gracefully falls back to plan defaults. Storage is rendered only when onVolume
-// is supplied; storageMinMb enforces Railway's grow-only rule in the manage flow.
-function ResourceFields({
-  limits, cpu, memory, volume, onCpu, onMemory, onVolume, disabled, storageMinMb = 0,
-}) {
-  if (!limits) return null
-  // Keep whatever the deployment currently sits on selectable even if it is not
-  // one of the plan's listed steps, so the control never silently snaps to
-  // "Plan maximum" and submit a value the user did not choose.
-  const withCurrent = (choices, raw) => {
-    const value = Number(String(raw ?? '').trim())
-    return raw && Number.isFinite(value) && !choices.includes(value)
-      ? [...choices, value].sort((a, b) => a - b)
-      : choices
-  }
-  const cpuChoices = withCurrent(limits.cpu_choices.filter(value => value < limits.max_cpu), cpu)
-  const memChoices = withCurrent(limits.memory_options_mb.filter(value => value < limits.max_memory_mb), memory)
-  const volChoices = withCurrent(limits.volume_options_mb.filter(value => value >= storageMinMb), volume)
-  return (
-    <div className="id-resource-fields">
-      <label className="id-field-block">
-        <span className="id-label">CPU</span>
-        <select className="id-select" value={cpu} disabled={disabled} onChange={event => onCpu(event.target.value)}>
-          <option value="">Plan maximum · {fmtCpu(limits.max_cpu)}</option>
-          {cpuChoices.map(value => <option key={value} value={value}>{fmtCpu(value)}</option>)}
-        </select>
-      </label>
-      <label className="id-field-block">
-        <span className="id-label">RAM</span>
-        <select className="id-select" value={memory} disabled={disabled} onChange={event => onMemory(event.target.value)}>
-          <option value="">Plan maximum · {fmtMemory(limits.max_memory_mb)}</option>
-          {memChoices.map(value => <option key={value} value={value}>{fmtMemory(value)}</option>)}
-        </select>
-      </label>
-      {onVolume && (
-        <label className="id-field-block">
-          <span className="id-label">Storage</span>
-          <select className="id-select" value={volume} disabled={disabled} onChange={event => onVolume(event.target.value)}>
-            {volChoices.map(value => <option key={value} value={value}>{fmtVolume(value)}</option>)}
-          </select>
-          {storageMinMb > 0 && <small>Railway volumes can only grow.</small>}
-        </label>
-      )}
-    </div>
-  )
-}
-
-function fmtUsd(value) {
-  if (typeof value !== 'number') return ''
-  return `$${Number.isInteger(value) ? value : value.toFixed(2)}`
-}
-
-function WandIcon(props) {
-  return (
-    <svg viewBox="0 0 24 24" width={props.width || 16} height={props.width || 16} fill="none"
-      stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M4.5 16.5c-1.5 1.3-2 5-2 5s3.7-.5 5-2c.7-.8.7-2.1-.1-2.9a2 2 0 0 0-2.9-.1ZM12 15l-3-3a22 22 0 0 1 8-11 11 11 0 0 1 6 6 22 22 0 0 1-11 8Z" />
-    </svg>
-  )
-}
-
-function resourceDefaults(limits) {
-  return {
-    cpu: limits ? String(limits.default_cpu ?? Math.min(2, limits.max_cpu)) : '',
-    memory: limits ? String(limits.default_memory_mb ?? Math.min(4096, limits.max_memory_mb)) : '',
-    volume: limits ? String(limits.default_volume_mb) : '',
-  }
-}
-
-// Mirrors the mobius.you deploy composer: name + a live "included / storage"
-// launch summary, resources, and access tucked behind Advanced settings, plus
-// a Deploy Möbius action. Container updates stay in the normal Settings flow.
-function NewDeploymentModal({
-  onClose, onCreate, workspacePlans, preferredWorkspaceId, regionOptions,
-}) {
-  const [name, setName] = useState('My Möbius')
-  const [managedAuth, setManagedAuth] = useState(true)
-  // The form owns the workspace choice; limits, plan and blocked notice come
-  // from the selected workspace. The workspace in use is derived on every
-  // render: plans can arrive after the modal opened, or a reload can drop the
-  // chosen one, and what is shown must always be what gets sent. Until the
-  // owner picks one it starts from the workspace of their latest deployment.
-  const [chosenWorkspaceId, setChosenWorkspaceId] = useState('')
-  const workspaces = workspacePlans?.workspaces
-  const workspace = [chosenWorkspaceId, preferredWorkspaceId]
-    .map(id => workspaces?.find(item => item.id === id))
-    .find(Boolean) || workspaces?.[0]
-  const workspaceId = workspace?.id || ''
-  const planLimits = workspace?.plan_limits
-  const plan = workspace?.plan
-  // Shown as a notice only: it can be minutes old, and creating re-checks the
-  // plan live, so the owner is never blocked by stale data after fixing billing.
-  const blocked = workspace?.deploy_blocked || ''
-  const [cpu, setCpu] = useState(() => resourceDefaults(planLimits).cpu)
-  const [memory, setMemory] = useState(() => resourceDefaults(planLimits).memory)
-  const [volume, setVolume] = useState(() => resourceDefaults(planLimits).volume)
-  // Another workspace brings its own plan: start its resource choices from that
-  // plan's defaults (not on first render, which already used them).
-  const shownWorkspaceRef = useRef(workspaceId)
-  useEffect(() => {
-    if (shownWorkspaceRef.current === workspaceId) return
-    shownWorkspaceRef.current = workspaceId
-    const defaults = resourceDefaults(planLimits)
-    setCpu(defaults.cpu)
-    setMemory(defaults.memory)
-    setVolume(defaults.volume)
-  }, [workspaceId, planLimits])
-  const [region, setRegion] = useState(() => {
-    const zone = Intl.DateTimeFormat().resolvedOptions().timeZone || ''
-    const suggestion = suggestRailwayRegion(zone, -new Date().getTimezoneOffset())
-    return regionOptions?.some(option => option.id === suggestion) ? suggestion : ''
-  })
-  const [pending, setPending] = useState(false)
-  const [error, setError] = useState('')
-  const inputRef = useRef(null)
-  const dialogRef = useDialog(onClose, pending, inputRef)
-
-  const submit = async event => {
-    event.preventDefault()
-    if (!name.trim() || !workspace || pending) return
-    setPending(true)
-    setError('')
-    try {
-      const settings = {
-        name: name.trim(),
-        managed_auth: managedAuth,
-        cpu: cpu ? Number(cpu) : null,
-        memory_mb: memory ? Number(memory) : null,
-        volume_mb: volume ? Number(volume) : null,
-      }
-      if (regionOptions?.length && region) settings.region = region
-      settings.workspace_id = workspace.id
-      await onCreate(settings)
-      onClose()
-    } catch (requestError) {
-      setError(requestError)
-    } finally {
-      setPending(false)
-    }
-  }
-
-  const planName = planTitle(plan)
-  const included = planLimits && typeof planLimits.included_usd === 'number'
-    ? fmtUsd(planLimits.included_usd)
-    : ''
-  const storageLabel = planLimits
-    ? fmtVolume(Number(volume) || planLimits.default_volume_mb)
-    : ''
-  const regionLabel = regionOptions?.length
-    ? (regionOptions.find(option => option.id === region)?.label || 'Railway preferred region')
-    : ''
-  const advancedSummary = [
-    storageLabel || (planLimits ? 'Default resources' : ''),
-    regionLabel,
-    managedAuth ? 'Möbius sign-in on' : 'Local sign-in',
-  ].filter(Boolean).join(' · ')
-  const summary = []
-  if (included) {
-    summary.push(<span key="inc"><b>{included}</b> included{planName ? ` on ${planName}` : ''}</span>)
-  }
-  if (storageLabel) {
-    summary.push(<span key="sto"><b>{storageLabel}</b> persistent storage</span>)
-  }
-  const summaryRow = []
-  summary.forEach((item, index) => {
-    if (index > 0) summaryRow.push(<i key={`sep${index}`} aria-hidden="true" />)
-    summaryRow.push(item)
-  })
-
-  return (
-    <div className="id-modal-backdrop" onMouseDown={event => {
-      if (!pending && event.target === event.currentTarget) onClose()
-    }}>
-      <form
-        ref={dialogRef}
-        className="id-modal id-composer-modal"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="new-deployment-title"
-        aria-busy={pending}
-        tabIndex={-1}
-        onSubmit={submit}
-      >
-        <h2 id="new-deployment-title">Name your Möbius</h2>
-        <p className="id-composer-sub">We’ll build it in your Railway account.</p>
-
-        <label className="id-label" htmlFor="deployment-name">Name</label>
-        <div className="id-input-wrap id-input-wrap--tick">
-          <input
-            ref={inputRef}
-            id="deployment-name"
-            className="id-input"
-            value={name}
-            maxLength={80}
-            autoComplete="off"
-            spellCheck="false"
-            disabled={pending}
-            onChange={event => setName(event.target.value)}
-          />
-          {name.trim() && (
-            <span className="id-tick" aria-hidden="true">
-              <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round"><path d="m5 13 4 4L19 7" /></svg>
-            </span>
-          )}
-        </div>
-
-        {workspaces?.length > 1 && (
-          <label className="id-field-block">
-            <span className="id-label">Railway workspace</span>
-            <select className="id-select" value={workspaceId} disabled={pending} onChange={event => setChosenWorkspaceId(event.target.value)}>
-              {workspaces.map(item => (
-                <option key={item.id} value={item.id}>{item.name}</option>
-              ))}
-            </select>
-          </label>
-        )}
-
-        {summaryRow.length > 0 && (
-          <p className="id-launch-summary">{summaryRow}</p>
-        )}
-
-        {(planLimits || regionOptions?.length > 0) ? (
-          <details className="id-disclosure">
-            <summary>
-              <span className="id-disclosure-title">Advanced settings</span>
-              <span className="id-disclosure-state">
-                {advancedSummary}
-              </span>
-              <span className="id-disclosure-caret" aria-hidden="true">
-                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="m9 6 6 6-6 6" /></svg>
-              </span>
-            </summary>
-            <div className="id-disclosure-body">
-              {planLimits && (
-                <>
-                  <p className="id-eyebrow">Resources</p>
-                  <ResourceFields
-                    limits={planLimits}
-                    cpu={cpu}
-                    memory={memory}
-                    volume={volume}
-                    onCpu={setCpu}
-                    onMemory={setMemory}
-                    onVolume={setVolume}
-                    disabled={pending}
-                  />
-                </>
-              )}
-              {regionOptions?.length > 0 && (
-                <div className="id-region-group">
-                  <label className="id-field-block">
-                    <span className="id-label">Deployment region</span>
-                    <select className="id-select" value={region} disabled={pending} onChange={event => setRegion(event.target.value)}>
-                      <option value="">Railway preferred region</option>
-                      {regionOptions.map(option => <option key={option.id} value={option.id}>{option.label}</option>)}
-                    </select>
-                    <small>We suggest a region when your browser’s time zone allows it. Check before launch; moving storage later can interrupt service.</small>
-                  </label>
-                </div>
-              )}
-              <p className="id-eyebrow">Access</p>
-              <label className="id-switch">
-                <input
-                  type="checkbox"
-                  className="id-switch-input"
-                  checked={managedAuth}
-                  disabled={pending}
-                  onChange={event => setManagedAuth(event.target.checked)}
-                />
-                <span className="id-switch-track" aria-hidden="true" />
-                <span className="id-switch-copy">
-                  <strong>Sign in with Möbius</strong>
-                  <span>Secure your Möbius with your mobius.you account. Disable this to set up a custom username and password on first boot.</span>
-                </span>
-              </label>
-              <p className="id-cost-note">
-                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M12 11v5" /><path d="M12 7.5h.01" /></svg>
-                <span><strong>Möbius doesn't charge you.</strong> We use Railway to make launching your Möbius agents as seamless as possible; Railway bills your own account for actual usage.</span>
-              </p>
-            </div>
-          </details>
-        ) : (
-          <label className="id-check-row">
-            <input
-              type="checkbox"
-              checked={managedAuth}
-              disabled={pending}
-              onChange={event => setManagedAuth(event.target.checked)}
-            />
-            <span>
-              <strong>Sign in with Möbius</strong>
-              <small>Secure it with your mobius.you account. Disable this to set up a custom username and password on first boot.</small>
-            </span>
-          </label>
-        )}
-
-        {!workspace && (
-          <div className="id-manage-error" role="alert">
-            {workspaces?.length === 0
-              ? 'Railway did not share a workspace. Reconnect Railway and share one.'
-              : 'Update Möbius to choose a Railway workspace.'}
-          </div>
-        )}
-        {blocked && <div className="id-manage-error" role="alert">{blocked}</div>}
-        <AccountActionError error={error} />
-
-        <div className="id-composer-foot">
-          <p className="id-composer-note">
-            Möbius follows each build step until your private link is ready. You can close this and come back anytime.
-          </p>
-          <div className="id-modal-actions">
-            <button type="button" className="id-btn" disabled={pending} onClick={onClose}>
-              Cancel
-            </button>
-            <button type="submit" className="id-btn id-btn--primary id-deploy-btn" disabled={!name.trim() || !workspace || pending}>
-              {pending ? 'Deploying…' : <><WandIcon width={16} /> Deploy Möbius</>}
-            </button>
-          </div>
-        </div>
-      </form>
-    </div>
-  )
-}
-
 function meterPercent(value) {
   const parsed = parseFloat(String(value ?? '').replace('%', ''))
   return Number.isFinite(parsed) ? Math.max(0, Math.min(100, parsed)) : 0
@@ -1585,7 +1227,7 @@ function DeploymentMetrics({ token, instance, compact = false }) {
       controller = requestController
       try {
         const data = await identityRequest(
-          token, `/railway/deployments/${instance.id}/metrics`, { signal: requestController.signal },
+          token, `/railway/deployments/${instance.id}/metrics?cost=1`, { signal: requestController.signal },
         )
         if (!requestController.signal.aborted && !cancelled) {
           setMetrics(data)
@@ -1651,533 +1293,23 @@ function DeploymentMetrics({ token, instance, compact = false }) {
           percent={metrics?.network?.percent}
         />
       </div>
-    </div>
-  )
-}
-
-function RecoverySection({ token, instance }) {
-  // "Open Recovery" starts an ephemeral Railway worker on the account host and,
-  // when it reports ready, hands off to the worker's own web UI in a popup — the
-  // same web flow the mobius.you website uses. No credentials touch this frame.
-  const [recovery, setRecovery] = useState(null)
-  const pollRef = useRef(null)
-  const busyRef = useRef(false)
-
-  useEffect(() => () => {
-    clearTimeout(pollRef.current)
-    busyRef.current = false
-  }, [])
-
-  const poll = useCallback(async () => {
-    try {
-      const status = await identityRequest(token, `/railway/deployments/${instance.id}/recovery/status`)
-      setRecovery({ state: status.state, message: status.message, error: status.error })
-      if (status.state === 'ready' && status.open_url) {
-        window.open(status.open_url, 'mobius-recovery', 'width=940,height=760')
-        busyRef.current = false
-        return
-      }
-      if (status.state === 'starting') {
-        pollRef.current = setTimeout(poll, 2500)
-      } else {
-        busyRef.current = false
-      }
-    } catch (requestError) {
-      busyRef.current = false
-      setRecovery({ state: 'error', message: requestError.message, error: '' })
-    }
-  }, [token, instance.id])
-
-  const start = async () => {
-    if (busyRef.current) return
-    busyRef.current = true
-    setRecovery({ state: 'starting', message: 'Starting a temporary recovery worker\u2026', error: '' })
-    try {
-      await identityRequest(token, `/railway/deployments/${instance.id}/recovery`, { method: 'POST' })
-      poll()
-    } catch (requestError) {
-      busyRef.current = false
-      setRecovery({ state: 'error', message: requestError.message, error: '' })
-    }
-  }
-
-  const preparing = recovery?.state === 'starting'
-  return (
-    <div className="id-recovery">
-      <button type="button" className="id-btn id-recovery-btn" disabled={preparing} onClick={start}>
-        {preparing
-          ? <><ArrowRotateCw className="id-spin" width={16} /> Preparing Recovery…</>
-          : 'Open Recovery'}
-      </button>
-      {recovery && recovery.state !== 'starting' && (
-        <div
-          className={`id-recovery-note${recovery.state === 'error' ? ' is-error' : ''}`}
-          role="status"
-        >
-          {recovery.state === 'ready'
-            ? 'Recovery opened in a new window.'
-            : (recovery.error || recovery.message)}
+      {metrics?.cost?.heading && (
+        <div className="id-cost-summary">
+          <strong>{metrics.cost.heading}</strong>
+          {metrics.cost.note && <span>{metrics.cost.note}</span>}
+          <div className="id-meter-track"><div className="id-meter-fill" style={{ width: `${meterPercent(metrics.cost.percent)}%` }} /></div>
         </div>
       )}
-      {!recovery && (
-        <small className="id-recovery-hint">
-          Opens a temporary, isolated worker to inspect and repair this deployment.
-        </small>
-      )}
-    </div>
-  )
-}
-
-function DeletionRecoverySection({
-  token, instance, pending, onConfirmAbsent,
-}) {
-  const [diagnosis, setDiagnosis] = useState(null)
-  const [checkError, setCheckError] = useState('')
-  const [unsupported, setUnsupported] = useState(false)
-  const [confirmRecord, setConfirmRecord] = useState(false)
-  const [revision, setRevision] = useState(0)
-
-  useEffect(() => {
-    const controller = new AbortController()
-    setDiagnosis(null)
-    setCheckError('')
-    setUnsupported(false)
-    ;(async () => {
-      try {
-        const result = await identityRequest(
-          token,
-          `/railway/deployments/${instance.id}/deletion`,
-          { signal: controller.signal },
-        )
-        if (!controller.signal.aborted) setDiagnosis(result)
-      } catch (requestError) {
-        if (controller.signal.aborted) return
-        // Older Möbius hosts do not have this read-only check yet. Preserve the
-        // existing retry path rather than turning a staged upgrade into an error.
-        if (requestError.status === 404) setUnsupported(true)
-        else setCheckError(requestError.message)
-      }
-    })()
-    return () => controller.abort()
-  }, [instance.id, revision, token])
-
-  const checking = !diagnosis && !checkError && !unsupported
-  const title = checking
-    ? 'Checking the Railway project'
-    : diagnosis?.state === 'present'
-      ? 'Railway still shows this project'
-      : ['missing', 'missing_unconfirmed'].includes(diagnosis?.state)
-        ? 'Deletion may already be complete'
-        : diagnosis?.state === 'authorization'
-          ? 'Reconnect Railway to continue'
-          : 'Railway could not confirm deletion'
-  const message = checking
-    ? 'This read-only check does not change your deployment.'
-    : diagnosis?.message
-      || checkError
-      || 'Try deleting again, or open Railway to check the project directly.'
-  const RecoveryIcon = checking ? ArrowRotateCw : diagnosis?.can_confirm_absent ? CheckCircle : Warning
-  const absenceNeedsOwnerCheck = diagnosis?.state === 'missing_unconfirmed'
-
-  return (
-    <section className="id-deletion-recovery" aria-labelledby="deletion-recovery-title">
-      <div className="id-deletion-recovery-head">
-        <RecoveryIcon
-          className={checking ? 'id-spin' : ''}
-          width={18}
-          aria-hidden="true"
-        />
-        <div>
-          <h3 id="deletion-recovery-title">{title}</h3>
-          <p>{message}</p>
-        </div>
-      </div>
-
-      <div className="id-deletion-recovery-actions">
-        {instance.railway_url && (
-          <button
-            type="button"
-            className="id-btn"
-            disabled={Boolean(pending)}
-            onClick={() => window.open(instance.railway_url, '_blank', 'noopener,noreferrer')}
-          >
-            Open Railway <ArrowUpRight width={16} />
-          </button>
-        )}
-        {checkError && (
-          <button
-            type="button"
-            className="id-btn"
-            disabled={Boolean(pending)}
-            onClick={() => setRevision(value => value + 1)}
-          >
-            Check again
-          </button>
-        )}
-        {diagnosis?.can_confirm_absent && !confirmRecord && (
-          <button
-            type="button"
-            className="id-btn id-btn--quiet"
-            disabled={Boolean(pending)}
-            onClick={() => setConfirmRecord(true)}
-          >
-            Remove from this list
-          </button>
-        )}
-      </div>
-
-      {confirmRecord && (
-        <div className="id-absence-confirm">
-          <strong>{absenceNeedsOwnerCheck
-            ? 'Did you check that the project is gone in Railway?'
-            : 'Remove this finished deployment from the list?'}</strong>
-          <span>{absenceNeedsOwnerCheck
-            ? 'This only removes the finished record from Möbius. It does not delete anything in Railway.'
-            : 'Möbius will check Railway once more, then remove only the local record.'}</span>
-          <div>
-            <button
-              type="button"
-              className="id-btn"
-              disabled={Boolean(pending)}
-              onClick={() => setConfirmRecord(false)}
-            >
-              Not yet
-            </button>
-            <button
-              type="button"
-              className="id-btn id-btn--danger"
-              disabled={Boolean(pending)}
-              onClick={onConfirmAbsent}
-            >
-              {pending === 'confirm-absent'
-                ? 'Removing…'
-                : absenceNeedsOwnerCheck ? 'I checked — remove it' : 'Remove finished deployment'}
-            </button>
-          </div>
-        </div>
-      )}
-    </section>
-  )
-}
-
-function ManageDeploymentPanel({
-  instance, section, onClose, onCompute, onStorage, onRetry, planLimits, token,
-}) {
-  // Selects use '' to mean "plan maximum"; if the deployment already sits at the
-  // plan ceiling, start there rather than on a value the picker would not list.
-  const [cpu, setCpu] = useState(() => {
-    const current = instance.resources.cpu ? String(instance.resources.cpu) : ''
-    return planLimits && Number(current) >= planLimits.max_cpu ? '' : current
-  })
-  const [memory, setMemory] = useState(() => {
-    const current = instance.resources.memory_mb ? String(instance.resources.memory_mb) : ''
-    return planLimits && Number(current) >= planLimits.max_memory_mb ? '' : current
-  })
-  const [volume, setVolume] = useState(() => {
-    const current = instance.resources.volume_size_mb
-    if (!current) return ''
-    return String(planLimits?.volume_options_mb.find(value => value > current) ?? current)
-  })
-  const [confirmVolume, setConfirmVolume] = useState(null)
-  const [pending, setPending] = useState('')
-  const [error, setError] = useState('')
-  const resourceSummary = instance.resources.volume_size_mb
-    ? 'Change CPU or RAM, or increase storage'
-    : 'Change CPU or RAM'
-  const canRetryDeployment = instance.status !== 'delete_failed' && instance.actions.retry
-
-  const run = async (action, work) => {
-    if (pending) return
-    setPending(action)
-    setError('')
-    try {
-      await work()
-      onClose()
-    } catch (requestError) {
-      setError(requestError.message)
-    } finally {
-      setPending('')
-    }
-  }
-
-  return (
-      <section
-        id={`manage-${instance.id}`}
-        className="id-manage-panel"
-        aria-label={`Deployment options for ${instance.name}`}
-        aria-busy={Boolean(pending)}
-      >
-        {canRetryDeployment && (
-          <div className="id-manage-retry">
-            <div>
-              <strong>Deployment needs attention</strong>
-              <span>{instance.last_error || 'Railway could not finish this deployment.'}</span>
-            </div>
-            <button
-              type="button"
-              className="id-btn id-btn--primary"
-              disabled={Boolean(pending)}
-              onClick={() => run('retry', () => onRetry(instance.id))}
-            >
-              {pending === 'retry' ? 'Retrying…' : 'Try deployment again'}
-            </button>
-          </div>
-        )}
-
-        <div className="id-manage-settings">
-          {instance.actions.edit_resources && (
-            <details className="id-disclosure id-manage-disclosure" open={section === 'resources' || undefined}>
-              <summary>
-                <span className="id-disclosure-title">Resources</span>
-                <span className="id-disclosure-state">{resourceSummary}</span>
-                <span className="id-disclosure-caret" aria-hidden="true">
-                  <ChevronRight width={15} />
-                </span>
-              </summary>
-              <div className="id-disclosure-body id-manage-resources">
-            {planLimits ? (
-              <ResourceFields
-                limits={planLimits}
-                cpu={cpu}
-                memory={memory}
-                onCpu={setCpu}
-                onMemory={setMemory}
-                disabled={Boolean(pending)}
-              />
-            ) : (
-              <div className="id-resource-fields">
-                <p className="id-storage-limit-note">Plan limits are unavailable right now.</p>
-                <label className="id-field-block">
-                  <span className="id-label">CPU</span>
-                  <input
-                    className="id-input id-input--boxed"
-                    inputMode="numeric"
-                    value={cpu}
-                    placeholder="Plan maximum"
-                    disabled={Boolean(pending)}
-                    onChange={event => setCpu(event.target.value.replace(/\D/g, ''))}
-                  />
-                </label>
-                <label className="id-field-block">
-                  <span className="id-label">RAM (MB)</span>
-                  <input
-                    className="id-input id-input--boxed"
-                    inputMode="numeric"
-                    value={memory}
-                    placeholder="Plan maximum"
-                    disabled={Boolean(pending)}
-                    onChange={event => setMemory(event.target.value.replace(/\D/g, ''))}
-                  />
-                </label>
-              </div>
-            )}
-            <button
-              type="button"
-              className="id-btn"
-              disabled={Boolean(pending)}
-              onClick={() => run('compute', () => onCompute(instance.id, {
-                cpu: cpu ? Number(cpu) : null,
-                memory_mb: memory ? Number(memory) : null,
-              }))}
-            >
-              {pending === 'compute' ? 'Updating…' : 'Update compute'}
-            </button>
-            {instance.resources.volume_size_mb ? (
-              <div className="id-manage-storage">
-                <div className="id-manage-storage-intro">
-                  <strong>Storage</strong>
-                  <span>Currently {fmtVolume(instance.resources.volume_size_mb)}. Existing data stays in place when you grow it.</span>
-                </div>
-                <div className="id-storage-row">
-                  <label className="id-field-block">
-                    <span className="id-label">Increase to</span>
-                    {planLimits ? (
-                      <select
-                        className="id-select"
-                        value={volume}
-                        disabled={Boolean(pending) || confirmVolume !== null}
-                        onChange={event => { setVolume(event.target.value); setConfirmVolume(null) }}
-                      >
-                        {planLimits.volume_options_mb
-                          .filter(value => value >= instance.resources.volume_size_mb)
-                          .map(value => <option key={value} value={value}>{fmtVolume(value)}</option>)}
-                      </select>
-                    ) : (
-                      <input
-                        className="id-input id-input--boxed"
-                        inputMode="numeric"
-                        value={volume}
-                        disabled={Boolean(pending) || confirmVolume !== null}
-                        onChange={event => { setVolume(event.target.value.replace(/\D/g, '')); setConfirmVolume(null) }}
-                      />
-                    )}
-                  </label>
-                  {confirmVolume === null && <button
-                    type="button"
-                    className="id-btn"
-                    disabled={Boolean(pending) || !volume || Number(volume) <= instance.resources.volume_size_mb}
-                    onClick={() => setConfirmVolume(Number(volume))}
-                  >
-                    Review increase
-                  </button>}
-                </div>
-                {confirmVolume !== null && (
-                  <div className="id-storage-confirm" role="group" aria-label="Confirm storage increase">
-                    <strong>Increase storage to {fmtVolume(confirmVolume)}?</strong>
-                    <p>This volume can only grow. You won’t be able to reduce it later.</p>
-                    <div className="id-storage-confirm-actions">
-                      <button type="button" className="id-btn" disabled={Boolean(pending)} onClick={() => setConfirmVolume(null)}>Keep current size</button>
-                      <button
-                        type="button"
-                        className="id-btn id-btn--primary"
-                        disabled={Boolean(pending)}
-                        onClick={() => run('storage', () => onStorage(instance.id, { volume_mb: confirmVolume }))}
-                      >
-                        {pending === 'storage' ? 'Increasing…' : `Increase to ${fmtVolume(confirmVolume)}`}
-                      </button>
-                    </div>
-                  </div>
-                )}
-                <p className="id-storage-limit-note">Attached storage can only be increased, not reduced.</p>
-              </div>
-            ) : null}
-              </div>
-            </details>
-          )}
-
-          {section === 'recovery' && deploymentCanRecover(instance) && (
-            <details className="id-disclosure id-manage-disclosure" open={section === 'recovery' || undefined}>
-              <summary>
-                <span className="id-disclosure-title">Recovery</span>
-                <span className="id-disclosure-state">Open a temporary repair session</span>
-                <span className="id-disclosure-caret" aria-hidden="true">
-                  <ChevronRight width={15} />
-                </span>
-              </summary>
-              <div className="id-disclosure-body id-manage-recovery">
-                <RecoverySection token={token} instance={instance} />
-              </div>
-            </details>
-          )}
-        </div>
-
-        {error && <div className="id-signin-error" role="alert">{error}</div>}
-
-      </section>
-  )
-}
-
-function DeleteDeploymentModal({
-  instance, token, onClose, onRetry, onDelete, onConfirmAbsent,
-}) {
-  const [pending, setPending] = useState('')
-  const [error, setError] = useState('')
-  const [confirmDelete, setConfirmDelete] = useState(false)
-  const closeRef = useRef(null)
-  const dialogRef = useDialog(onClose, Boolean(pending), closeRef)
-  const retryingDelete = String(instance.status).toLowerCase() === 'delete_failed'
-  const cancellingBuild = deploymentIsBuilding(instance)
-
-  const run = async (action, work) => {
-    if (pending) return
-    setPending(action)
-    setError('')
-    try {
-      await work()
-      onClose()
-    } catch (requestError) {
-      setError(requestError)
-    } finally {
-      setPending('')
-    }
-  }
-
-  return (
-    <div className="id-modal-backdrop" onMouseDown={event => {
-      if (!pending && event.target === event.currentTarget) onClose()
-    }}>
-      <section
-        ref={dialogRef}
-        className="id-modal id-manage-modal"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="delete-deployment-title"
-        aria-busy={Boolean(pending)}
-        tabIndex={-1}
-      >
-        <div className="id-manage-head">
-          <div>
-            <h2 id="delete-deployment-title">{cancellingBuild ? `Cancel ${instance.name}` : `Delete ${instance.name}`}</h2>
-            <p>{cancellingBuild ? 'Stop this deployment build' : 'Permanent deployment removal'}</p>
-          </div>
-        </div>
-
-        {retryingDelete && (
-          <DeletionRecoverySection
-            token={token}
-            instance={instance}
-            pending={pending}
-            onConfirmAbsent={() => run(
-              'confirm-absent',
-              () => onConfirmAbsent(instance.id),
-            )}
-          />
-        )}
-
-        <AccountActionError error={error} />
-
-        {confirmDelete ? (
-          <div className="id-delete-confirm">
-            <strong>{retryingDelete
-              ? 'Try removing this Railway project again?'
-              : cancellingBuild
-                ? 'Cancel this deployment?'
-                : 'Delete this Möbius and its Railway project?'}</strong>
-            <span>{retryingDelete
-              ? 'Möbius will ask Railway to permanently delete it again, then keep this page updated.'
-              : cancellingBuild
-                ? 'Setup will stop. If Railway has created a project and storage volume, they will be removed. This cannot be undone.'
-                : 'This permanently removes the deployment and cannot be undone.'}</span>
-            <div>
-              <button type="button" className="id-btn" disabled={Boolean(pending)} onClick={() => setConfirmDelete(false)}>
-                {cancellingBuild ? 'Keep building' : 'Keep deployment'}
-              </button>
-              <button
-                type="button"
-                className="id-btn id-btn--danger"
-                disabled={Boolean(pending)}
-                onClick={() => run(
-                  retryingDelete ? 'retry-delete' : 'delete',
-                  () => retryingDelete ? onRetry(instance.id) : onDelete(instance.id),
-                )}
-              >
-                {pending
-                  ? cancellingBuild ? 'Cancelling…' : 'Deleting…'
-                  : retryingDelete ? 'Try deleting again' : cancellingBuild ? 'Cancel and remove' : 'Delete permanently'}
-              </button>
-            </div>
-          </div>
-        ) : (
-          <button type="button" className="id-btn id-btn--danger" onClick={() => setConfirmDelete(true)}>
-            <Trash width={16} /> {retryingDelete ? 'Try deleting again' : cancellingBuild ? 'Cancel deployment' : 'Delete deployment'}
-          </button>
-        )}
-
-        <button ref={closeRef} type="button" className="id-btn id-modal-close" disabled={Boolean(pending)} onClick={onClose}>
-          Close
-        </button>
-      </section>
     </div>
   )
 }
 
 function RailwayConnectionModal({
   token, connection, onClose, onReload, onChangeAccount,
-  onDisconnected, connecting, connectionError,
+  dashboard, connecting, connectionError,
 }) {
   const [pending, setPending] = useState('')
   const [error, setError] = useState('')
-  const [confirmDisconnect, setConfirmDisconnect] = useState(false)
   const closeRef = useRef(null)
   const busy = Boolean(pending) || connecting
   const dialogRef = useDialog(onClose, busy, closeRef)
@@ -2242,37 +1374,13 @@ function RailwayConnectionModal({
 
         <AccountActionError error={error || connectionError} />
 
-        {confirmDisconnect ? (
-          <div className="id-delete-confirm">
-            <strong>Disconnect Railway from Möbius?</strong>
-            <span>New deployments will need a Railway account again. Existing deployments are unaffected.</span>
-            <div>
-              <button type="button" className="id-btn" disabled={busy} onClick={() => setConfirmDisconnect(false)}>
-                Keep connected
-              </button>
-              <button
-                type="button"
-                className="id-btn id-btn--danger"
-                disabled={busy}
-                onClick={() => run('disconnect', async () => {
-                  await identityRequest(token, '/railway/disconnect', { method: 'POST' })
-                  onDisconnected()
-                })}
-              >
-                {pending === 'disconnect' ? 'Disconnecting…' : 'Disconnect Railway'}
-              </button>
-            </div>
-          </div>
-        ) : (
-          <div className="id-connection-footer">
-            <button type="button" className="id-btn" disabled={busy} onClick={() => run('change', onChangeAccount)}>
-              {connecting ? 'Connecting…' : 'Change hosting account'}
-            </button>
-            <button type="button" className="id-btn id-btn--quiet id-connection-disconnect" disabled={busy} aria-label="Disconnect Railway" onClick={() => setConfirmDisconnect(true)}>
-              <Trash width={16} /> Disconnect
-            </button>
-          </div>
-        )}
+        <div className="id-connection-footer">
+          <button type="button" className="id-btn" disabled={busy} onClick={() => run('change', onChangeAccount)}>
+            {connecting ? 'Connecting…' : 'Change hosting account'}
+          </button>
+          <DashboardAction url={dashboard} label="Disconnect on mobius.you" />
+        </div>
+        <p className="id-metrics-note">Disconnecting Railway requires your account dashboard sign-in.</p>
       </section>
     </div>
   )
@@ -2550,10 +1658,6 @@ export default function App({ appId, token }) {
   const [signingIn, setSigningIn] = useState(false)
   const [disconnecting, setDisconnecting] = useState(false)
   const [reconnecting, setReconnecting] = useState(false)
-  const [creatingDeployment, setCreatingDeployment] = useState(false)
-  const [managingDeployment, setManagingDeployment] = useState(null)
-  const [managingSection, setManagingSection] = useState(null)
-  const [deletingDeployment, setDeletingDeployment] = useState(null)
   const [managingRailway, setManagingRailway] = useState(false)
   const [connectingRailway, setConnectingRailway] = useState(false)
   const [uploading, setUploading] = useState(false)
@@ -2614,7 +1718,7 @@ export default function App({ appId, token }) {
     const sequence = ++railwaySequenceRef.current
     if (!quiet) setRailwayError('')
     try {
-      const next = await identityRequest(token, '/railway?region_options=1&workspace_ids=1')
+      const next = await identityRequest(token, '/railway?workspace_ids=1&dashboard=1')
       if (railwaySequenceRef.current === sequence) {
         setRailway(next)
         // Plans cost the launcher Railway lookups, so they load after the
@@ -3018,30 +2122,6 @@ export default function App({ appId, token }) {
                 onRetryPlans={loadWorkspacePlans}
                 onRetryRailway={loadRailway}
                 selfHosted={mode === 'linked'}
-                onNew={() => setCreatingDeployment(true)}
-                managingDeployment={managingDeployment}
-                managingSection={managingSection}
-                onCloseManage={() => setManagingDeployment(null)}
-                onManage={(instance, section = null) => {
-                  if (managingDeployment?.id === instance.id && managingSection === section) {
-                    setManagingDeployment(null)
-                    return
-                  }
-                  setManagingSection(section)
-                  setManagingDeployment(instance)
-                }}
-                onCompute={(id, payload) => railwayAction(`/deployments/${id}/compute`, {
-                  method: 'PATCH',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify(payload),
-                })}
-                onStorage={(id, payload) => railwayAction(`/deployments/${id}/storage`, {
-                  method: 'PATCH',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify(payload),
-                })}
-                onRetry={id => railwayAction(`/deployments/${id}/retry`, { method: 'POST' })}
-                onDelete={setDeletingDeployment}
                 onRename={(id, payload) => railwayAction(`/deployments/${id}`, {
                   method: 'PATCH',
                   headers: { 'Content-Type': 'application/json' },
@@ -3109,35 +2189,6 @@ export default function App({ appId, token }) {
             }}
           />
         )}
-        {creatingDeployment && (
-          <NewDeploymentModal
-            workspacePlans={workspacePlans}
-            preferredWorkspaceId={railway?.instances.find(
-              instance => instance.workspace_id && instance.status !== 'deleting',
-            )?.workspace_id}
-            regionOptions={railway?.connection?.region_options}
-            onClose={() => setCreatingDeployment(false)}
-            onCreate={payload => railwayAction('/deployments', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(payload),
-            })}
-          />
-        )}
-        {deletingDeployment && (
-          <DeleteDeploymentModal
-            instance={deletingDeployment}
-            token={token}
-            onClose={() => setDeletingDeployment(null)}
-            onRetry={id => railwayAction(`/deployments/${id}/retry`, { method: 'POST' })}
-            onDelete={id => railwayAction(`/deployments/${id}`, { method: 'DELETE' })}
-            onConfirmAbsent={id => railwayAction(`/deployments/${id}/confirm-absent`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ confirmed_absent: true }),
-            })}
-          />
-        )}
         {managingRailway && railway?.connection && (
           <RailwayConnectionModal
             token={token}
@@ -3147,10 +2198,7 @@ export default function App({ appId, token }) {
             onChangeAccount={() => connectRailway(true)}
             connecting={connectingRailway}
             connectionError={railwayError}
-            onDisconnected={() => {
-              setManagingRailway(false)
-              void loadRailway()
-            }}
+            dashboard={railway.dashboard_url}
           />
         )}
       </main>

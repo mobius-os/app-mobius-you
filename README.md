@@ -48,12 +48,19 @@ During the limited test, the account service supplies a fixed notice that conver
 
 Railway control is a separate reviewed permission from identity management. A new account link explicitly grants Railway inventory/write access and a separate deployment-deletion scope; older identity-only links remain valid for profile reads but must reconnect before infrastructure controls appear.
 
-The app reads `GET /api/identity/railway`, creates deployments (the create form always chooses the Railway workspace from the per-workspace plans in `GET /api/identity/railway/workspace-plans` and sends it; there is no saved default workspace, and a platform without that route sees an "Update Möbius" notice instead of New deployment), lets owners choose automatic or manual verified-image updates, updates CPU/RAM and grows storage, retries failed operations, and requires an in-app confirmation before deletion. Railway OAuth opens in a popup from a short-lived, account-bound URL; the app polls the authoritative inventory for completion, so Railway codes and credentials never enter the frame. If Railway reports an ambiguous deletion failure, the app performs a read-only diagnosis and only offers local record removal after the server confirms the project is absent; retrying deletion remains explicit.
+The app reads the Railway inventory, per-workspace plans and live resource metrics. It shows deployment status, resource caps, region, persistence status and, when advertised, display-only Railway usage/cost information. Unknown usage is hidden rather than presented as zero. Rename remains a local action relayed through the backend; the account service owns the deployment name.
+
+Creating, retrying, deleting, cancelling, resizing, starting Recovery, removing a missing-project card and disconnecting Railway require the owner's signed-in mobius.you dashboard. The app links there **before** asking for any settings or confirmation; it never submits these operations. Failed and deletion-failed cards both offer a manual card-removal handoff with a warning that a hidden Railway project may still be running and billed. Opening a deployment requires confirmed ready/active state; deleting deployments also disable their Railway link. Container replacement stays in Möbius Settings.
+
+The app opts into `GET /api/identity/railway?workspace_ids=1&dashboard=1`; `dashboard_url` comes from the platform's configured account origin rather than a hard-coded host. Older platforms omit it, so protected-action links remain unavailable with an update explanation—never a fallback mutation. Live metrics opt into `?cost=1` and tolerate older servers that omit cost. Release the launcher read extension and platform bridge before this app; owner-only restrictions remain enforced independently on both servers.
+
+Railway connect/change-account still uses the existing provider consent popup, and plan refresh remains available. Codes and credentials never enter the frame.
 
 ## Development
 
 ```
-npm test        # runs the contract tests (node --test, no extra deps)
+npm ci
+npm test        # contract and exact-source rendered-component tests
 ```
 
 `index.jsx` is the entry; `identity-contract.js` and `identity-styles.js` are the installed runtime files. The OpenAPI specs and `*.md` contracts in this repo are reference documentation, not installed source.

@@ -16,7 +16,7 @@ Möbius · You makes one handle the person's identity across Möbius, keeps priv
 
 ## Positioning
 
-The account surface lives inside the owner's Möbius rather than becoming a separate dashboard: identity, deployment inventory, and deliberate Railway actions remain available without exposing provider or Railway credentials to the mini-app.
+Identity and deployment observability live inside the owner's Möbius. Operations that can spend money, destroy data or open Recovery belong to the signed-in account dashboard; the app provides clear upfront navigation without exposing credentials.
 
 ## Operating Context
 
@@ -30,8 +30,8 @@ The app runs in a capability-sandboxed Möbius frame. mobius.you owns account id
 - Email may be stored privately for account access and displayed to the owner; provider-supplied names are not primary identity and should not be displayed.
 - Provider credentials, Railway credentials, account-link grants, and PKCE verifiers never enter the mini-app.
 - An uploaded or adopted provider avatar is stored only after the owner chooses it.
-- Full Railway control should be mediated through separate least-privilege read, write, and destructive operations; deletion retains deliberate confirmation.
-- Railway connection, creation, compute editing, retry, and deletion live in the app; direct Railway links remain available for provider-specific details.
+- Read-only deployment information, rename, plan refresh and provider-consented connection remain local; account-wide infrastructure mutations require the account dashboard owner session.
+- Creation, resource changes, retries, deletion/cancellation, missing-project removal, Recovery start and Railway disconnect are explicit dashboard handoffs, never local forms or automatic cleanup. Direct Railway links remain available when the project is not deleting.
 - Existing stored personal data is never erased by an interface update. Any retention migration is explicit, reviewed, and never a direct production database edit.
 
 ## Brand Commitments

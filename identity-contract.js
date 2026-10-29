@@ -72,11 +72,17 @@ export class IdentityRequestError extends Error {
 // the dashboard address; accept only an https dashboard link.
 export const ACCOUNT_CONFIRM_CODE = 'confirm_on_account'
 
+export function dashboardUrl(value) {
+  const url = webUrl(value, { httpsOnly: true })
+  return url && !url.search && !url.hash && /\/dashboard\/?$/.test(url.pathname) ? url.href : ''
+}
+
 export function accountConfirmUrl(detail) {
-  if (!detail || typeof detail !== 'object' || detail.code !== ACCOUNT_CONFIRM_CODE) return ''
-  const url = webUrl(detail.confirm_url, { httpsOnly: true })
-  if (!url || url.search || url.hash || !/\/dashboard\/?$/.test(url.pathname)) return ''
-  return url.href
+  return detail?.code === ACCOUNT_CONFIRM_CODE ? dashboardUrl(detail.confirm_url) : ''
+}
+
+export function deploymentCanOpen(instance) {
+  return ['ready', 'active'].includes(String(instance?.status || '').toLowerCase())
 }
 
 function exactKeys(value, required, optional = []) {
@@ -439,12 +445,17 @@ function validRailwayRegions(value) {
 
 export function parseRailway(value) {
   if (
-    !exactKeys(value, ['railway_access', 'connection', 'instances'])
+    !exactKeys(value, ['railway_access', 'connection', 'instances'], ['dashboard_url'])
     || !RAILWAY_ACCESS.includes(value.railway_access)
     || !Array.isArray(value.instances)
     || value.instances.length > 100
     || !value.instances.every(validRailwayInstance)
   ) throw new Error('Möbius returned invalid Railway deployment state.')
+  if (value.dashboard_url !== undefined) {
+    const safe = dashboardUrl(value.dashboard_url)
+    if (safe) value.dashboard_url = safe
+    else delete value.dashboard_url
+  }
   // The workspace a deployment is in is an advertised extension (requested with
   // ?workspace_ids=1). A malformed value only costs that deployment its
   // workspace-specific limits; it never blanks the deployments panel.
