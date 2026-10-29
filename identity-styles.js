@@ -577,8 +577,7 @@ button { user-select: none; -webkit-user-select: none; }
   height: 26px;
 }
 
-.id-deploy-name,
-.id-value { overflow-wrap: anywhere; }
+.id-deploy-name { overflow-wrap: anywhere; }
 
 .id-deploy-copy { min-width: 0; }
 
@@ -714,44 +713,6 @@ button { user-select: none; -webkit-user-select: none; }
 
 .id-deploy-detail--danger { color: var(--danger, #e67a7a); }
 
-/* Adding a deployment is a quiet row at the end of the list, not a button
-   competing with the section title. */
-.id-add-row {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  gap: 13px;
-  padding: 13px 16px;
-  border: 0;
-  border-top: 1px solid var(--border-light, var(--border, #2a2a2a));
-  background: transparent;
-  color: var(--muted, #999);
-  font-size: 13.5px;
-  font-weight: 600;
-  text-align: left;
-  cursor: pointer;
-  transition: background .15s ease, color .15s ease;
-}
-
-.id-add-row:hover { background: color-mix(in srgb, var(--text, #f5f5f5) 3%, transparent); color: var(--text, #f5f5f5); }
-.id-add-row:active { background: color-mix(in srgb, var(--text, #f5f5f5) 6%, transparent); }
-
-.id-add-plus {
-  width: 38px;
-  height: 38px;
-  flex: none;
-  display: grid;
-  place-items: center;
-  border: 1px dashed var(--border, #333);
-  border-radius: 10px;
-  color: var(--muted, #999);
-}
-
-.id-add-row:hover .id-add-plus {
-  border-color: color-mix(in srgb, var(--accent, #8b7cf6) 55%, var(--border, #333));
-  color: var(--accent, #8b7cf6);
-}
-
 /* Hosting details are a footnote, not a headline. */
 .id-dep-foot {
   display: flex;
@@ -765,17 +726,6 @@ button { user-select: none; -webkit-user-select: none; }
   color: var(--muted, #999);
   font-size: 12px;
 }
-
-.id-railway-plan-link {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  min-height: 40px;
-  color: var(--accent, #8b7cf6);
-  text-decoration: none;
-  white-space: nowrap;
-}
-.id-railway-plan-link:hover { text-decoration: underline; text-underline-offset: 3px; }
 
 .id-live-chip {
   display: inline-flex;
@@ -833,13 +783,6 @@ button { user-select: none; -webkit-user-select: none; }
 .id-label {
   margin-bottom: 6px;
   font-size: 11px;
-}
-
-.id-value {
-  min-width: 0;
-  color: var(--text, #f5f5f5);
-  font-size: 13px;
-  font-weight: 600;
 }
 
 .id-btn {
@@ -1232,14 +1175,6 @@ button { user-select: none; -webkit-user-select: none; }
 
 .id-connection-fact .id-label { align-self: start; padding-top: 2px; }
 
-.id-connection-value {
-  min-width: 0;
-  overflow-wrap: anywhere;
-  color: var(--text, #f5f5f5);
-  font-size: 14px;
-  font-weight: 650;
-}
-
 .id-connection-plan-actions { grid-column: 2; }
 
 .id-connection-plan-actions {
@@ -1259,7 +1194,6 @@ button { user-select: none; -webkit-user-select: none; }
 }
 
 .id-connection-plan-link { color: var(--accent, #8b7cf6); }
-.id-connection-refresh { color: var(--muted, #999); }
 
 .id-connection-footer {
   display: flex;
@@ -1270,58 +1204,11 @@ button { user-select: none; -webkit-user-select: none; }
   padding-top: 18px;
 }
 
-.id-connection-disconnect {
-  width: auto;
-  margin-top: 0;
-  padding-inline: 14px;
-}
-
-.id-operation-status {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  align-items: start;
-  gap: 10px;
-  margin: -5px 0 18px;
-  padding: 13px;
-  border: 1px solid var(--border, #333);
-  border-radius: 13px;
-  background: var(--surface-2, #1e1e1e);
-}
-
-.id-operation-status > svg { margin-top: 1px; }
-.id-operation-status strong,
-.id-operation-status span { display: block; }
-.id-operation-status strong { font-size: 13px; }
-.id-operation-status span {
-  margin-top: 3px;
-  color: var(--muted, #999);
-  font-size: 12px;
-  line-height: 1.5;
-}
-.id-operation-status--danger {
-  border-color: color-mix(in srgb, var(--danger, #d65a5a) 38%, var(--border, #333));
-  color: var(--danger, #e67a7a);
-}
-.id-operation-status--progress {
-  border-color: color-mix(in srgb, var(--accent, #8b7cf6) 34%, var(--border, #333));
-  color: var(--accent, #a99bf8);
-}
-
 .id-railway-conn-account {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.id-railway-plan {
-  flex: 0 0 auto;
-  padding: 3px 9px;
-  border-radius: 999px;
-  background: var(--surface-2, #1e1e1e);
-  color: var(--muted, #999);
-  font-size: 11px;
-  text-transform: capitalize;
 }
 
 .id-railway-manage {
@@ -1363,13 +1250,6 @@ button { user-select: none; -webkit-user-select: none; }
 
 .id-metrics--card .id-meters {
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.id-rename-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: end;
   gap: 12px;
 }
 
@@ -1615,15 +1495,8 @@ button { user-select: none; -webkit-user-select: none; }
     white-space: normal;
     overflow-wrap: anywhere;
   }
-  .id-dep-foot .id-railway-plan { grid-area: 1 / 2; justify-self: end; }
-  .id-dep-foot .id-railway-plan-link {
-    grid-area: 2 / 1;
-    justify-self: start;
-    min-height: 44px;
-    white-space: normal;
-  }
   .id-dep-foot .id-railway-manage {
-    grid-area: 2 / 2;
+    grid-area: 1 / 2;
     justify-self: end;
     margin: 0;
     padding: 0;
@@ -1640,8 +1513,6 @@ button { user-select: none; -webkit-user-select: none; }
 
   .id-meters { grid-template-columns: 1fr; }
   .id-metrics--card .id-meters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .id-rename-row { grid-template-columns: 1fr; align-items: stretch; }
-  .id-rename-row .id-btn { width: 100%; }
   .id-connection-fact { grid-template-columns: 78px minmax(0, 1fr); }
   .id-connection-plan-actions { grid-column: 1 / -1; margin-top: 2px; }
   .id-connection-footer { display: grid; grid-template-columns: minmax(0, 1fr) auto; }

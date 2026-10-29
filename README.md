@@ -48,13 +48,15 @@ During the limited test, the account service supplies a fixed notice that conver
 
 Railway control is a separate reviewed permission from identity management. A new account link explicitly grants Railway inventory/write access and a separate deployment-deletion scope; older identity-only links remain valid for profile reads but must reconnect before infrastructure controls appear.
 
-The app reads the Railway inventory, per-workspace plans and live resource metrics. It shows deployment status, resource caps, region, persistence status and, when advertised, display-only Railway usage/cost information. Unknown usage is hidden rather than presented as zero. Rename remains a local action relayed through the backend; the account service owns the deployment name.
+The app reads the Railway inventory and live resource metrics. It shows deployment status, resource caps, region, persistence status and, when advertised, display-only Railway usage/cost information. Unknown usage is hidden rather than presented as zero. Rename remains a local action relayed through the backend; the account service owns the deployment name.
 
 Creating, retrying, deleting, cancelling, resizing, starting Recovery, removing a missing-project card and disconnecting Railway require the owner's signed-in mobius.you dashboard. The app links there **before** asking for any settings or confirmation; it never submits these operations. Failed and deletion-failed cards both offer a manual card-removal handoff with a warning that a hidden Railway project may still be running and billed. Opening a deployment requires confirmed ready/active state; deleting deployments also disable their Railway link. Container replacement stays in Möbius Settings.
 
-The app opts into `GET /api/identity/railway?workspace_ids=1&dashboard=1`; `dashboard_url` comes from the platform's configured account origin rather than a hard-coded host. Older platforms omit it, so protected-action links remain unavailable with an update explanation—never a fallback mutation. Live metrics opt into `?cost=1` and tolerate older servers that omit cost. Release the launcher read extension and platform bridge before this app; owner-only restrictions remain enforced independently on both servers.
+The app opts into `GET /api/identity/railway?dashboard=1`; `dashboard_url` comes from the platform's configured account origin rather than a hard-coded host. Older platforms omit it, so protected-action links remain unavailable with an update explanation—never a fallback mutation. Live metrics opt into `?cost=1` and tolerate older servers that omit cost. Release the launcher read extension and platform bridge before this app; owner-only restrictions remain enforced independently on both servers.
 
-Railway connect/change-account still uses the existing provider consent popup, and plan refresh remains available. Codes and credentials never enter the frame.
+Workspace choice, live plan limits and credit/blockage warnings live on the account dashboard, where deployments are authored. The app does not fetch creation metadata or refresh plans; each card reads its own recorded resource caps and live usage. Published bridge endpoints remain compatible for other clients.
+
+Railway connect/change-account still uses the existing provider consent popup. Codes and credentials never enter the frame.
 
 ## Development
 

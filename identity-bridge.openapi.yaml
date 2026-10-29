@@ -163,9 +163,9 @@ paths:
       description: >-
         Lists each authorized Railway workspace with its own plan, deploy-blocked
         notice, and plan limits for deployment observability. Creation chooses its workspace on the account dashboard.
-        Requires the reviewed railway_manage grant. Platforms and launchers that
-        predate the route fail it; the app then asks the owner to update Möbius
-        while the account dashboard remains authoritative.
+        Requires the reviewed railway_manage grant. Older hosts may lack this route.
+        The Identity app no longer requests this creation metadata; the account
+        dashboard remains authoritative.
       security: [{ appBearer: [] }]
       responses:
         '200':

@@ -32,7 +32,6 @@ import {
   parseIdentity,
   parseLinkAttempt,
   parseRailway,
-  parseWorkspacePlans,
   railwayAccountChanged,
   waitForAccountLink,
 } from './identity-contract.js'
@@ -82,10 +81,6 @@ async function identityRequest(token, path = '', options = {}) {
   // Query strings select optional fields; the route is what picks the contract.
   const route = path.split('?')[0]
   if (route === '/railway') return parseRailway(body)
-  if (path === '/railway/workspace-plans') return parseWorkspacePlans(body)
-  if (/^\/railway\/deployments\/[^/]+\/deletion$/.test(path)) {
-    return parseDeletionDiagnosis(body)
-  }
   if (['', '/profile', '/avatar', '/link/complete'].includes(path)) {
     return parseIdentity(body)
   }
@@ -767,10 +762,6 @@ function DashboardAction({ url, label, ariaLabel, className = 'id-btn' }) {
   )
 }
 
-function planTitle(label) {
-  return ({ trial: 'Trial', free: 'Free', hobby: 'Hobby', pro: 'Pro', enterprise: 'Enterprise' })[label] || ''
-}
-
 function resourceSummary(resources) {
   return [
     resources.cpu ? `${resources.cpu} vCPU` : 'Plan CPU limit',
@@ -783,10 +774,6 @@ function Deployments({
   token,
   items,
   railway,
-  workspacePlans,
-  plansSettled,
-  plansFailure,
-  onRetryPlans,
   onRetryRailway,
   selfHosted,
   onRename,
@@ -806,17 +793,6 @@ function Deployments({
   }
   const dashboard = railway?.dashboard_url
   const managedById = new Map((railway?.instances || []).map(item => [item.id, item]))
-  const workspaceList = workspacePlans?.workspaces
-  const severalWorkspaces = workspaceList?.length > 1
-  // With several workspaces the header names the count and the attention banner
-  // lists blocked workspaces that actually host one of these deployments.
-  // With one workspace it is that workspace's own state, even before it hosts anything.
-  const blockedWorkspaces = (workspaceList || []).filter(item => item.deploy_blocked
-    && (!severalWorkspaces
-      || (railway?.instances || []).some(instance => instance.workspace_id === item.id)))
-  const plansMissing = Boolean(plansSettled) && !workspaceList && !plansFailure
-  const plansUnreachable = Boolean(plansSettled) && !workspaceList && Boolean(plansFailure)
-  const noWorkspaces = Boolean(plansSettled) && workspaceList?.length === 0
   const deploymentOrigin = value => {
     try {
       const parsed = new URL(value)
@@ -904,41 +880,6 @@ function Deployments({
               ? <><ArrowRotateCw className="id-spin" width={16} aria-hidden="true" /> Checking…</>
               : 'Try again'}
           </button>
-        </div>
-      )}
-      {connected && plansUnreachable && (
-        <div className="id-railway-callout">
-          <div>
-            <strong>Could not load your Railway workspaces.</strong>
-            <span>{plansFailure} Existing deployments keep working.</span>
-          </div>
-          <button type="button" className="id-btn" onClick={onRetryPlans}>Try again</button>
-        </div>
-      )}
-      {connected && plansMissing && (
-        <div className="id-railway-callout">
-          <div>
-            <strong>Workspace details are unavailable on this Möbius.</strong>
-            <span>Your deployments and account dashboard remain available.</span>
-          </div>
-        </div>
-      )}
-      {connected && noWorkspaces && (
-        <div className="id-railway-callout">
-          <div>
-            <strong>Railway did not share a workspace.</strong>
-            <span>Reconnect Railway and share a workspace, or manage deployments on mobius.you.</span>
-          </div>
-        </div>
-      )}
-      {connected && blockedWorkspaces.length > 0 && (
-        <div className="id-railway-callout id-railway-callout--warn">
-          <div>
-            <strong>Railway needs attention</strong>
-            {blockedWorkspaces.map(item => (
-              <span key={item.id}>{severalWorkspaces ? `${item.name}: ` : ''}{item.deploy_blocked}</span>
-            ))}
-          </div>
         </div>
       )}
       <div className="id-deployments">
@@ -1044,12 +985,12 @@ function Deployments({
               </div>
             )}
             {managed?.status === 'ready' && (
-              <DeploymentMetrics token={token} instance={managed} compact />
+              <DeploymentMetrics token={token} instance={managed} />
             )}
-            {managed?.actions.edit_resources && (
+            {managed?.status === 'ready' && (
               <div className="id-deployment-resources">
                 <div><strong>Resources</strong><span>{resourceSummary(managed.resources)}</span></div>
-                <DashboardAction url={dashboard} label="Change on mobius.you" />
+                {managed.actions.edit_resources && <DashboardAction url={dashboard} label="Change on mobius.you" />}
               </div>
             )}
             {failed && (
@@ -1072,19 +1013,7 @@ function Deployments({
       )}
       {connected && railway.connection && (
         <div className="id-dep-foot">
-          <span className="id-railway-conn-account">
-            {severalWorkspaces
-              ? `Railway connected · ${workspaceList.length} workspaces`
-              : workspaceList?.length === 1
-                ? `Railway workspace connected · ${workspaceList[0].name}`
-                : 'Railway connected'}
-          </span>
-          {workspaceList?.length === 1 && planTitle(workspaceList[0].plan) && (
-            <span className="id-railway-plan">{planTitle(workspaceList[0].plan)}</span>
-          )}
-          <a className="id-railway-plan-link" href="https://railway.com/workspace/plans" target="_blank" rel="noopener noreferrer">
-            Manage plan on Railway <ArrowUpRight width={13} aria-hidden="true" />
-          </a>
+          <span className="id-railway-conn-account">Railway connected</span>
           {onManageConnection && (
             <button type="button" className="id-railway-manage" aria-label="Manage Railway account" onClick={onManageConnection}>
               Account
@@ -1209,7 +1138,7 @@ function MetricMeter({ label, value, limit, percent }) {
   )
 }
 
-function DeploymentMetrics({ token, instance, compact = false }) {
+function DeploymentMetrics({ token, instance }) {
   const [metrics, setMetrics] = useState(null)
   const [error, setError] = useState('')
 
@@ -1263,7 +1192,7 @@ function DeploymentMetrics({ token, instance, compact = false }) {
 
   if (instance.status !== 'ready') return null
   if (error && !metrics) return <div className="id-metrics-note">Live metrics are unavailable right now.</div>
-  // Render the meter structure immediately so the manage view opens complete;
+  // Render meters immediately so the card opens complete;
   // values fill in when the fetch returns rather than gating on a spinner.
   const runtime = metrics?.runtime || {}
   const runtimeBits = [
@@ -1273,7 +1202,7 @@ function DeploymentMetrics({ token, instance, compact = false }) {
     runtime.data_status,
   ].filter(Boolean)
   return (
-    <div className={`id-metrics${compact ? ' id-metrics--card' : ''}${metrics ? '' : ' is-loading'}`}>
+    <div className={`id-metrics id-metrics--card${metrics ? '' : ' is-loading'}`}>
       {metrics
         ? runtimeBits.length > 0 && <div className="id-metrics-runtime">{runtimeBits.join(' · ')}</div>
         : (
@@ -1305,27 +1234,12 @@ function DeploymentMetrics({ token, instance, compact = false }) {
 }
 
 function RailwayConnectionModal({
-  token, connection, onClose, onReload, onChangeAccount,
+  connection, onClose, onChangeAccount,
   dashboard, connecting, connectionError,
 }) {
-  const [pending, setPending] = useState('')
-  const [error, setError] = useState('')
   const closeRef = useRef(null)
-  const busy = Boolean(pending) || connecting
+  const busy = Boolean(connecting)
   const dialogRef = useDialog(onClose, busy, closeRef)
-
-  const run = async (action, work) => {
-    if (pending) return
-    setPending(action)
-    setError('')
-    try {
-      await work()
-    } catch (requestError) {
-      setError(requestError)
-    } finally {
-      setPending('')
-    }
-  }
 
   return (
     <div className="id-modal-backdrop" onMouseDown={event => {
@@ -1357,25 +1271,14 @@ function RailwayConnectionModal({
               <a className="id-btn id-connection-plan-link" href="https://railway.com/workspace/plans" target="_blank" rel="noopener noreferrer" aria-label="Manage Railway plan in a new tab">
                 Manage plan on Railway <ArrowUpRight width={15} aria-hidden="true" />
               </a>
-              <button
-                type="button"
-                className="id-btn id-connection-refresh"
-                disabled={busy}
-                onClick={() => run('plan', async () => {
-                  await identityRequest(token, '/railway/plan/refresh', { method: 'POST' })
-                  await onReload()
-                })}
-              >
-                {pending === 'plan' ? 'Refreshing…' : 'Refresh plans'}
-              </button>
             </div>
           </div>
         </div>
 
-        <AccountActionError error={error || connectionError} />
+        <AccountActionError error={connectionError} />
 
         <div className="id-connection-footer">
-          <button type="button" className="id-btn" disabled={busy} onClick={() => run('change', onChangeAccount)}>
+          <button type="button" className="id-btn" disabled={busy} onClick={onChangeAccount}>
             {connecting ? 'Connecting…' : 'Change hosting account'}
           </button>
           <DashboardAction url={dashboard} label="Disconnect on mobius.you" />
@@ -1642,10 +1545,6 @@ function AccountConfirmNotice() {
 export default function App({ appId, token }) {
   const [data, setData] = useState(null)
   const [railway, setRailway] = useState(null)
-  const [workspacePlans, setWorkspacePlans] = useState(null)
-  const [plansSettled, setPlansSettled] = useState(false)
-  const [plansFailure, setPlansFailure] = useState('')
-  const plansSequenceRef = useRef(0)
   const [railwayError, setRailwayError] = useState('')
   const [agentAccess, setAgentAccess] = useState(null)
   const [agentError, setAgentError] = useState('')
@@ -1686,44 +1585,13 @@ export default function App({ appId, token }) {
     return () => { loadSequenceRef.current += 1 }
   }, [load])
 
-  // Older platforms and launchers lack the workspace-plans route: a definitive
-  // failure of it (not supported, not connected, malformed) clears the plans,
-  // which turns off creating deployments. A transient one (network, 5xx) keeps
-  // the plans already held, so the form never changes target mid-session.
-  const loadWorkspacePlans = useCallback(async () => {
-    const sequence = ++plansSequenceRef.current
-    try {
-      const plans = await identityRequest(token, '/railway/workspace-plans')
-      if (plansSequenceRef.current === sequence) {
-        setWorkspacePlans(plans)
-        setPlansFailure('')
-        setPlansSettled(true)
-      }
-    } catch (requestError) {
-      // Only "no such route" or a payload that does not parse means the host
-      // predates the route. Anything else (a network failure, Railway
-      // unreachable, or a sign-in/reconnect answer such as 401/409) says what
-      // the host said and offers a retry, keeping any plans already held.
-      const definitive = !(requestError instanceof IdentityRequestError)
-        || [404, 405].includes(requestError.status)
-      if (plansSequenceRef.current === sequence) {
-        if (definitive) setWorkspacePlans(null)
-        setPlansFailure(definitive ? '' : requestError.message)
-        setPlansSettled(true)
-      }
-    }
-  }, [token])
-
   const loadRailway = useCallback(async ({ quiet = false } = {}) => {
     const sequence = ++railwaySequenceRef.current
     if (!quiet) setRailwayError('')
     try {
-      const next = await identityRequest(token, '/railway?workspace_ids=1&dashboard=1')
+      const next = await identityRequest(token, '/railway?dashboard=1')
       if (railwaySequenceRef.current === sequence) {
         setRailway(next)
-        // Plans cost the launcher Railway lookups, so they load after the
-        // deployments are on screen and never from quiet polling.
-        if (!quiet) void loadWorkspacePlans()
       }
       return next
     } catch (requestError) {
@@ -1732,20 +1600,16 @@ export default function App({ appId, token }) {
       }
       return null
     }
-  }, [token, loadWorkspacePlans])
+  }, [token])
 
   useEffect(() => {
     if (data?.account_mode === 'linked' || data?.account_mode === 'managed') {
       void loadRailway()
     } else {
       setRailway(null)
-      setWorkspacePlans(null)
-      setPlansSettled(false)
-      setPlansFailure('')
     }
     return () => {
       railwaySequenceRef.current += 1
-      plansSequenceRef.current += 1
     }
   }, [data?.account_mode, loadRailway])
 
@@ -1937,10 +1801,6 @@ export default function App({ appId, token }) {
         const next = await loadRailway({ quiet: true })
         if (replace ? railwayAccountChanged(previousAccount, next) : next?.connection?.connected) {
           try { popup.close() } catch { /* already closed */ }
-          setWorkspacePlans(null)
-          setPlansSettled(false)
-          setPlansFailure('')
-          void loadWorkspacePlans()
           return next
         }
         if (popup.closed) {
@@ -2116,10 +1976,6 @@ export default function App({ appId, token }) {
                 token={token}
                 items={data.deployments}
                 railway={railway}
-                workspacePlans={workspacePlans}
-                plansSettled={plansSettled}
-                plansFailure={plansFailure}
-                onRetryPlans={loadWorkspacePlans}
                 onRetryRailway={loadRailway}
                 selfHosted={mode === 'linked'}
                 onRename={(id, payload) => railwayAction(`/deployments/${id}`, {
@@ -2191,10 +2047,8 @@ export default function App({ appId, token }) {
         )}
         {managingRailway && railway?.connection && (
           <RailwayConnectionModal
-            token={token}
             connection={railway.connection}
             onClose={() => setManagingRailway(false)}
-            onReload={loadRailway}
             onChangeAccount={() => connectRailway(true)}
             connecting={connectingRailway}
             connectionError={railwayError}

@@ -15,12 +15,9 @@ import {
   formatMembershipMonth,
   parseAgentAccess,
   parseIdentity,
-  parseDeletionDiagnosis,
   parseLinkAttempt,
   parseRailway,
-  parseWorkspacePlans,
   railwayAccountChanged,
-  suggestRailwayRegion,
   waitForAccountLink,
 } from './identity-contract.js'
 
@@ -371,130 +368,12 @@ test('accepts a connection of only connected and account and ignores the old sav
   }))
 })
 
-test('suggests a nearby single region from time zone and gates region controls', () => {
-  assert.equal(suggestRailwayRegion('Europe/London', 60), 'europe-west4-drams3a')
-  assert.equal(suggestRailwayRegion('America/Los_Angeles', -420), 'us-west2')
-  assert.equal(suggestRailwayRegion('America/Chicago', -360), 'us-east4-eqdc4a')
-  assert.equal(suggestRailwayRegion('Asia/Singapore', 480), 'asia-southeast1-eqsg3a')
-  assert.equal(suggestRailwayRegion('Etc/UTC', 0), '')
-  const base = {
-    railway_access: 'available',
-    connection: {
-      connected: true, account: 'owner@example.com',
-    },
-    instances: [],
-  }
-  assert.equal(parseRailway(base).connection.region_options, undefined)
-  const regions = [
-    ['us-west2', 'US West'], ['us-east4-eqdc4a', 'US East'],
-    ['europe-west4-drams3a', 'Europe'], ['asia-southeast1-eqsg3a', 'Asia Pacific'],
-  ].map(([id, label]) => ({ id, label }))
-  const advertised = parseRailway({
-    ...base, connection: { ...base.connection, region_options: regions },
-  })
-  assert.deepEqual(advertised.connection.region_options, regions)
-  const malformed = parseRailway({
-    ...base, connection: { ...base.connection, region_options: [{ id: 'unknown', label: 'No' }] },
-  })
-  assert.equal(malformed.connection.region_options, undefined)
-})
-
-test('validates per-workspace plan data strictly', () => {
-  const limits = {
-    cpu_choices: [1, 2, 4],
-    max_cpu: 4,
-    default_cpu: 2,
-    memory_options_mb: [512, 1024, 2048],
-    max_memory_mb: 2048,
-    default_memory_mb: 1024,
-    volume_options_mb: [500, 1000],
-    default_volume_mb: 500,
-    included_usd: 5,
-  }
-  const entry = (id, patch = {}) => ({
-    id, name: `Workspace ${id}`, plan: 'hobby', deploy_blocked: '', plan_limits: limits, ...patch,
-  })
-  const valid = { workspaces: [entry('a'), entry('b', { plan: 'unknown' }), entry('c', { plan: 'enterprise' })] }
-  assert.equal(parseWorkspacePlans(valid), valid)
-  // Every plan field the form reads is validated, so a drifted payload fails here, not mid-render.
-  for (const patch of [{ included_usd: undefined }, { included_usd: -1 }, { default_cpu: 0 }, { default_memory_mb: '1024' }]) {
-    assert.throws(() => parseWorkspacePlans({ workspaces: [entry('a', { plan_limits: { ...limits, ...patch } })] }), /invalid Railway workspace plans/)
-  }
-  assert.doesNotThrow(() => parseWorkspacePlans({ workspaces: [entry('a', { plan_limits: { ...limits, included_usd: null } })] }))
-  // There is no saved default workspace: a `current` key is not part of the contract.
-  assert.throws(() => parseWorkspacePlans({ ...valid, current: 'b' }))
-  assert.throws(() => parseWorkspacePlans({ workspaces: [], current: null }))
-
-  const rejected = [
-    { ...valid, extra: true },
-    { current: 'a' },
-    { ...valid, workspaces: 'a' },
-    { ...valid, workspaces: [{ ...entry('a'), extra: 1 }] },
-    { ...valid, workspaces: [{ id: 'a', name: 'A', plan: 'hobby', deploy_blocked: '' }] },
-    { ...valid, workspaces: [entry('a', { id: 7 })] },
-    { ...valid, workspaces: [entry('')] },
-    { ...valid, workspaces: [entry('a', { name: '' })] },
-    { ...valid, workspaces: [entry('a', { plan: 'platinum' })] },
-    { ...valid, workspaces: [entry('a', { deploy_blocked: null })] },
-    { ...valid, workspaces: [entry('a', { plan_limits: { ...limits, max_cpu: '4' } })] },
-    { ...valid, workspaces: [entry('a', { plan_limits: null })] },
-    { ...valid, workspaces: [entry('a'), entry('a')] },
-    { ...valid, workspaces: Array.from({ length: 101 }, (_, i) => entry(`w${i}`)) },
-    { ...valid, workspaces: [entry('x'.repeat(129))] },
-    { ...valid, workspaces: [entry('a', { name: 'x'.repeat(129) })] },
-    { ...valid, workspaces: [entry('a', { deploy_blocked: 'x'.repeat(1001) })] },
-  ]
-  for (const value of rejected) assert.throws(() => parseWorkspacePlans(value))
-  // Characters, not UTF-16 units: 128 emoji are 256 units and must be accepted.
-  const emoji = '\u{1F600}'
-  const wide = { workspaces: [entry('a', { name: emoji.repeat(128), deploy_blocked: emoji.repeat(1000) })] }
-  assert.equal(parseWorkspacePlans(wide), wide)
-  assert.throws(() => parseWorkspacePlans({ workspaces: [entry('a', { name: emoji.repeat(129) })] }))
-  assert.throws(() => parseWorkspacePlans({ workspaces: [entry('a', { deploy_blocked: emoji.repeat(1001) })] }))
-  const maximal = { workspaces: Array.from({ length: 100 }, (_, i) => entry(`w${i}`)) }
-  assert.equal(parseWorkspacePlans(maximal), maximal)
-})
-
-test('workspace reads remain separate and transient failures preserve confirmed plans', async () => {
-  const source = await readFile(new URL('./index.jsx', import.meta.url), 'utf8')
-  assert.match(source, /identityRequest\(token, '\/railway\/workspace-plans'\)/)
-  assert.match(source, /if \(!quiet\) void loadWorkspacePlans\(\)/)
-  assert.match(source, /\[404, 405\]\.includes\(requestError\.status\)/)
-  assert.match(source, /if \(definitive\) setWorkspacePlans\(null\)/)
-  assert.match(source, /setWorkspacePlans\(null\)\s+setPlansSettled\(false\)\s+setPlansFailure\(''\)\s+void loadWorkspacePlans\(\)/)
-  assert.doesNotMatch(source, /function NewDeploymentModal|settings\.workspace_id/)
-})
-
 test('legacy connection-wide workspace handling is gone', async () => {
   const source = await readFile(new URL('./index.jsx', import.meta.url), 'utf8')
   assert.doesNotMatch(source, /workspaceChosenOnCreate|reloadWorkspaces|workspaceSequenceRef/)
   assert.doesNotMatch(source, /\/railway\/workspaces|'\/railway\/workspace'/)
   assert.doesNotMatch(source, /connection\??\.(plan_limits|plan|workspace|deploy_blocked)\b/)
   assert.doesNotMatch(source, /connectionLimits|connectionPlan/)
-})
-
-test('missing workspace plans do not prevent reaching the authoritative account dashboard', async () => {
-  const source = await readFile(new URL('./index.jsx', import.meta.url), 'utf8')
-  assert.match(source, /connected && plansMissing/)
-  assert.match(source, /Workspace details are unavailable/)
-  assert.match(source, /<DashboardAction url=\{dashboard\} label="New deployment"/)
-  assert.doesNotMatch(source, /disabled=\{!workspaceList\?\.length\}/)
-})
-
-test('the header and banner describe the workspaces that matter', async () => {
-  const source = await readFile(new URL('./index.jsx', import.meta.url), 'utf8')
-  assert.match(source, /const severalWorkspaces = workspaceList\?\.length > 1/)
-  assert.match(source, /instance\.workspace_id === item\.id/)
-  assert.match(source, /`Railway connected · \$\{workspaceList\.length\} workspaces`/)
-  assert.match(source, /`Railway workspace connected · \$\{workspaceList\[0\]\.name\}`/)
-  assert.match(source, /workspaceList\?\.length === 1 && planTitle\(workspaceList\[0\]\.plan\)/)
-})
-
-test('zero shared workspaces get their own notice without inventing a default', async () => {
-  const source = await readFile(new URL('./index.jsx', import.meta.url), 'utf8')
-  assert.match(source, /const noWorkspaces = Boolean\(plansSettled\) && workspaceList\?\.length === 0/)
-  assert.match(source, /Railway did not share a workspace/)
-  assert.match(source, /setWorkspacePlans\(plans\)/)
 })
 
 test('a deployment may name its workspace, and a malformed value only loses that', () => {
@@ -523,9 +402,9 @@ test('resource summaries use the deployment inventory, not another workspace cei
   assert.doesNotMatch(source, /function ResourceFields|onCompute|onStorage/)
 })
 
-test('opts into the configured dashboard address and per-deployment workspace ids', async () => {
+test('opts into the configured dashboard address without unused creation metadata', async () => {
   const source = await readFile(new URL('./index.jsx', import.meta.url), 'utf8')
-  assert.match(source, /identityRequest\(token, '\/railway\?workspace_ids=1&dashboard=1'\)/)
+  assert.match(source, /identityRequest\(token, '\/railway\?dashboard=1'\)/)
 })
 
 test('account replacement still waits for authoritative inventory', async () => {
@@ -533,7 +412,7 @@ test('account replacement still waits for authoritative inventory', async () => 
   assert.match(source, /return next\s*\n\s*}\s*\n\s*if \(popup\.closed\)/)
 })
 
-test('accepts advertised image-update controls without requiring them from older hosts', () => {
+test('retains image-update status but discards retired authoring capabilities', () => {
   const base = {
     railway_access: 'available',
     connection: {
@@ -597,20 +476,6 @@ test('presents deletion failures as deletion recovery, never as a build retry', 
   assert.equal(deploymentPresentation({ status: 'future_state' }).tone, 'muted')
 })
 
-test('accepts only bounded deletion recovery state', () => {
-  const diagnosis = {
-    state: 'missing_unconfirmed',
-    message: 'Railway says this project may already be gone.',
-    can_confirm_absent: true,
-  }
-  assert.equal(parseDeletionDiagnosis(diagnosis), diagnosis)
-  assert.throws(() => parseDeletionDiagnosis({ ...diagnosis, state: 'deleted' }))
-  assert.throws(() => parseDeletionDiagnosis({ ...diagnosis, state: 'present' }))
-  assert.throws(() => parseDeletionDiagnosis({ ...diagnosis, can_confirm_absent: false }))
-  assert.throws(() => parseDeletionDiagnosis({ ...diagnosis, message: 'x'.repeat(361) }))
-  assert.throws(() => parseDeletionDiagnosis({ ...diagnosis, extra: true }))
-})
-
 test('tracks only Railway states that can settle without another owner action', () => {
   for (const status of ['queued', 'creating', 'deploying', 'deleting']) {
     assert.equal(deploymentNeedsTracking({ status }), true)
@@ -643,7 +508,7 @@ test('keeps resource information and rename local while protected edits navigate
   const source = await readFile(new URL('./index.jsx', import.meta.url), 'utf8')
   assert.match(source, /function DeploymentNameEditor\(/)
   assert.match(source, /onSave=\{name => onRename\(managed\.id, \{ name \}\)\}/)
-  assert.match(source, /managed\?\.actions\.edit_resources/)
+  assert.match(source, /managed\.actions\.edit_resources/)
   assert.match(source, /resourceSummary\(managed\.resources\)/)
   assert.doesNotMatch(source, /function ManageDeploymentPanel|function RecoverySection|function DeleteDeploymentModal|function NewDeploymentModal/)
 })
@@ -658,7 +523,7 @@ test('refreshes visible deployment metrics without opening management', async ()
   assert.match(metricsSource, /controller === requestController/)
   assert.match(metricsSource, /visibilitychange/)
   assert.match(metricsSource, /window\.addEventListener\('focus', resume\)/)
-  assert.match(source, /managed\?\.status === 'ready'[\s\S]*?<DeploymentMetrics token=\{token\} instance=\{managed\} compact/)
+  assert.match(source, /managed\?\.status === 'ready'[\s\S]*?<DeploymentMetrics token=\{token\} instance=\{managed\}/)
 })
 
 test('lists only deployments the account service already knows', async () => {
@@ -680,7 +545,7 @@ test('lists only deployments the account service already knows', async () => {
 
   assert.doesNotMatch(source, /\/railway\/deployments\/adopt-current/)
   assert.doesNotMatch(source, /Hosted with Railway/)
-  assert.match(source, /Railway workspace connected/)
+  assert.match(source, /Railway connected/)
   assert.match(source, /managedByOrigin\.get\(deploymentOrigin\(item\.url\)\)/)
   assert.match(source, /deploymentCanRecover\(managed\)/)
 })
@@ -689,8 +554,7 @@ test('changing Railway account waits for a different connected account', async (
   const source = await readFile(new URL('./index.jsx', import.meta.url), 'utf8')
   assert.match(source, /Railway account<\/h2>/)
   assert.match(source, /Manage plan on Railway/)
-  assert.match(source, /'\/railway\/plan\/refresh'/)
-  assert.match(source, /'Refresh plans'/)
+  assert.doesNotMatch(source, /\/railway\/plan\/refresh|Refresh plans/)
   assert.match(source, /Change hosting account/)
   const previous = 'first@example.com'
   assert.equal(railwayAccountChanged(previous, null), false)
@@ -874,4 +738,24 @@ test('dashboard address is an optional safe extension, not a hard-coded account 
     assert.equal(dashboardUrl(bad),'')
     assert.equal(parseRailway({...base,dashboard_url:bad}).dashboard_url,undefined)
   }
+})
+
+
+test('discards legacy creation metadata without hiding deployments or connection', () => {
+  for (const value of [null, 'drifted', { future: true }]) {
+    const connection = { connected: true, account: 'owner@example.test' }
+    const extensions = ['workspace', 'plan', 'deploy_blocked', 'plan_limits',
+      'update_policies', 'adopt_current', 'region_options']
+    const wire = Object.fromEntries(extensions.map(key => [key, value]))
+    const parsed = parseRailway({ railway_access: 'available', instances: [],
+      connection: { ...connection, ...wire } })
+    assert.deepEqual(parsed.connection, connection)
+  }
+})
+
+test('deployment authoring has no duplicate workspace/region/plan state in the app', async () => {
+  const source = await readFile(new URL('./index.jsx', import.meta.url), 'utf8')
+  assert.doesNotMatch(source, /workspace-plans|workspace_ids|loadWorkspacePlans|plansSequenceRef|Refresh plans/)
+  assert.match(source, /label="New deployment"/)
+  assert.match(source, /resourceSummary\(managed\.resources\)/)
 })

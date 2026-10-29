@@ -30,7 +30,7 @@ The app runs in a capability-sandboxed Möbius frame. mobius.you owns account id
 - Email may be stored privately for account access and displayed to the owner; provider-supplied names are not primary identity and should not be displayed.
 - Provider credentials, Railway credentials, account-link grants, and PKCE verifiers never enter the mini-app.
 - An uploaded or adopted provider avatar is stored only after the owner chooses it.
-- Read-only deployment information, rename, plan refresh and provider-consented connection remain local; account-wide infrastructure mutations require the account dashboard owner session.
+- Read-only deployment information, rename and provider-consented connection remain local; account-wide infrastructure mutations require the account dashboard owner session.
 - Creation, resource changes, retries, deletion/cancellation, missing-project removal, Recovery start and Railway disconnect are explicit dashboard handoffs, never local forms or automatic cleanup. Direct Railway links remain available when the project is not deleting.
 - Existing stored personal data is never erased by an interface update. Any retention migration is explicit, reviewed, and never a direct production database edit.
 

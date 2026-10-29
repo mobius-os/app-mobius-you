@@ -5,14 +5,6 @@ export const RAILWAY_ACCESS = Object.freeze([
   'unavailable',
   'available',
 ])
-export const DELETION_STATES = Object.freeze([
-  'present',
-  'missing',
-  'missing_unconfirmed',
-  'authorization',
-  'unknown',
-])
-
 const ACCOUNT_LINK_WINDOW_MS = 10 * 60 * 1000
 const BROKER_ACK_WINDOW_MS = 5 * 1000
 const ACCOUNT_LINK_STATE = /^[A-Za-z0-9_-]{32,512}$/
@@ -28,28 +20,6 @@ const TRACKED_DEPLOYMENT_STATUSES = new Set([
 ])
 const TRACKED_UPDATE_STATES = new Set(['pending', 'checking', 'retry'])
 export const IMAGE_UPDATE_POLICIES = Object.freeze(['automatic', 'manual'])
-export const RAILWAY_REGION_IDS = Object.freeze([
-  'us-west2', 'us-east4-eqdc4a', 'europe-west4-drams3a', 'asia-southeast1-eqsg3a',
-])
-
-// This is deliberately approximate, not browser geolocation. Unknown time
-// zones leave Railway's own preferred region in charge.
-export function suggestRailwayRegion(zone, offsetMinutes) {
-  if (typeof zone !== 'string' || !Number.isFinite(offsetMinutes)) return ''
-  if (zone.startsWith('America/')) {
-    return offsetMinutes <= -390 ? 'us-west2' : 'us-east4-eqdc4a'
-  }
-  if (/^(Europe|Africa|Atlantic)\//.test(zone)) return 'europe-west4-drams3a'
-  if (zone.startsWith('Asia/')) {
-    return offsetMinutes >= 300 ? 'asia-southeast1-eqsg3a' : 'europe-west4-drams3a'
-  }
-  if (/^(Australia|Indian)\//.test(zone)) return 'asia-southeast1-eqsg3a'
-  if (zone.startsWith('Pacific/')) {
-    return offsetMinutes < 0 ? 'us-west2' : 'asia-southeast1-eqsg3a'
-  }
-  return ''
-}
-
 const DELETE_CONFIRMATION_FALLBACK = (
   "Möbius couldn't confirm whether Railway removed this project. "
   + 'Try deleting again, or open Railway to check.'
@@ -360,89 +330,6 @@ function validRailwayInstance(instance) {
     && nullableString(instance.updates.error, 360)
 }
 
-function positiveIntList(value, max = 64) {
-  return Array.isArray(value)
-    && value.length <= max
-    && value.every(item => Number.isInteger(item) && item > 0)
-}
-
-// Optional plan-derived option ranges the account host may attach to the
-// connection so the app can render the same plan-bounded resource pickers the
-// mobius.you website shows. Absent on older hosts — treated as "unknown", the
-// app then omits the pickers rather than guessing limits.
-function validPlanLimits(value) {
-  // Lenient: require the known fields with correct types, but tolerate empty
-  // option lists and extra keys a newer account host may add. parseRailway DROPS
-  // a plan_limits that fails this rather than rejecting the whole payload, so
-  // shape drift only costs the pickers, never the deployments/connection panel.
-  return value !== null
-    && typeof value === 'object'
-    && !Array.isArray(value)
-    && positiveIntList(value.cpu_choices)
-    && Number.isInteger(value.max_cpu) && value.max_cpu > 0
-    && positiveIntList(value.memory_options_mb)
-    && Number.isInteger(value.max_memory_mb) && value.max_memory_mb > 0
-    && positiveIntList(value.volume_options_mb)
-    && Number.isInteger(value.default_volume_mb) && value.default_volume_mb > 0
-    && (value.included_usd === null || (typeof value.included_usd === 'number' && value.included_usd >= 0))
-    && Number.isInteger(value.default_cpu) && value.default_cpu > 0
-    && Number.isInteger(value.default_memory_mb) && value.default_memory_mb > 0
-}
-
-const WORKSPACE_PLANS = ['trial', 'free', 'hobby', 'pro', 'enterprise', 'unknown']
-
-// Lengths are counted in characters (code points), as the account service and
-// the platform count them; String.length counts UTF-16 units and would reject a
-// 128-emoji name they accept.
-const characters = value => [...value].length
-
-function validWorkspacePlan(item) {
-  return exactKeys(item, ['id', 'name', 'plan', 'deploy_blocked', 'plan_limits'])
-    && typeof item.id === 'string'
-    && characters(item.id) > 0
-    && characters(item.id) <= 128
-    && typeof item.name === 'string'
-    && characters(item.name) > 0
-    && characters(item.name) <= 128
-    && WORKSPACE_PLANS.includes(item.plan)
-    && typeof item.deploy_blocked === 'string'
-    && characters(item.deploy_blocked) <= 1000
-    && validPlanLimits(item.plan_limits)
-}
-
-// Per-workspace plan data that lets the create form choose a workspace itself.
-// Strict: any failure means the platform or launcher predates the route, and
-// the caller asks the owner to update. The platform bridge forwards only
-// `workspaces`; there is no saved default workspace.
-export function parseWorkspacePlans(value) {
-  if (
-    !exactKeys(value, ['workspaces'])
-    || !Array.isArray(value.workspaces)
-    || value.workspaces.length > 100
-    || !value.workspaces.every(validWorkspacePlan)
-    || new Set(value.workspaces.map(item => item.id)).size !== value.workspaces.length
-  ) throw new Error('Möbius returned invalid Railway workspace plans.')
-  return value
-}
-
-function validImageUpdatePolicies(value) {
-  return Array.isArray(value)
-    && value.length === IMAGE_UPDATE_POLICIES.length
-    && new Set(value).size === value.length
-    && value.every(policy => IMAGE_UPDATE_POLICIES.includes(policy))
-}
-
-function validRailwayRegions(value) {
-  return Array.isArray(value)
-    && value.length === RAILWAY_REGION_IDS.length
-    && new Set(value.map(item => item?.id)).size === value.length
-    && value.every(item => exactKeys(item, ['id', 'label'])
-      && RAILWAY_REGION_IDS.includes(item.id)
-      && typeof item.label === 'string'
-      && item.label.length > 0
-      && item.label.length <= 80)
-}
-
 export function parseRailway(value) {
   if (
     !exactKeys(value, ['railway_access', 'connection', 'instances'], ['dashboard_url'])
@@ -456,9 +343,8 @@ export function parseRailway(value) {
     if (safe) value.dashboard_url = safe
     else delete value.dashboard_url
   }
-  // The workspace a deployment is in is an advertised extension (requested with
-  // ?workspace_ids=1). A malformed value only costs that deployment its
-  // workspace-specific limits; it never blanks the deployments panel.
+  // Tolerate older hosts that attach optional workspace identifiers. A malformed
+  // unused extension must not hide the deployment inventory.
   for (const instance of value.instances) {
     if (instance.workspace_id !== undefined && !nullableWorkspaceId(instance.workspace_id)) {
       delete instance.workspace_id
@@ -482,27 +368,10 @@ export function parseRailway(value) {
       || typeof connection.account !== 'string'
       || connection.account.length > 320
     ) throw new Error('Möbius returned an invalid Railway connection.')
-    // The workspace and its plan belong to each deployment and are read from
-    // the per-workspace plans. An older launcher still sends a saved default
-    // here: drop it at this boundary so nothing can fall back to it.
-    delete connection.workspace
-    delete connection.plan
-    delete connection.deploy_blocked
-    delete connection.plan_limits
-    // This is an advertised capability. A malformed extension
-    // hides only the new controls; it never blanks the deployments panel.
-    if (
-      connection.update_policies !== undefined
-      && !validImageUpdatePolicies(connection.update_policies)
-    ) delete connection.update_policies
-    if (
-      connection.region_options !== undefined
-      && !validRailwayRegions(connection.region_options)
-    ) delete connection.region_options
-    // Older account hosts advertised an importer for deployments created
-    // outside Möbius. Retire that capability at this boundary so a staged
-    // service rollout cannot revive its UI or blank the Railway panel.
-    delete connection.adopt_current
+    // Older hosts still advertise creation controls. Accept their wire keys,
+    // but discard them: the account dashboard owns all deployment authoring.
+    for (const key of ['workspace', 'plan', 'deploy_blocked', 'plan_limits',
+      'update_policies', 'adopt_current', 'region_options']) delete connection[key]
   }
   return value
 }
@@ -513,23 +382,6 @@ export function railwayAccountChanged(previousAccount, next) {
     && next.connection.account
     && next.connection.account !== previousAccount
   )
-}
-
-export function parseDeletionDiagnosis(value) {
-  const confirmable = value?.state === 'missing'
-    || value?.state === 'missing_unconfirmed'
-  if (
-    !exactKeys(value, ['state', 'message', 'can_confirm_absent'])
-    || !DELETION_STATES.includes(value.state)
-    || typeof value.message !== 'string'
-    || value.message.length < 1
-    || value.message.length > 360
-    || typeof value.can_confirm_absent !== 'boolean'
-    || value.can_confirm_absent !== confirmable
-  ) {
-    throw new Error('Möbius returned invalid deletion recovery state.')
-  }
-  return value
 }
 
 export function deploymentNeedsTracking(instance) {
