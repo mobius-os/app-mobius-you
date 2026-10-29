@@ -4,6 +4,7 @@ import { readFile, mkdir, writeFile, rm } from 'node:fs/promises'
 import { build } from 'esbuild'
 import { JSDOM } from 'jsdom'
 import React, { act } from 'react'
+import { IDENTITY_STYLES } from './identity-styles.js'
 
 const dom = new JSDOM('<!doctype html><body><button id="opener">Open</button><div id="root"></div></body>', { url: 'https://example.test', pretendToBeVisual: true })
 Object.assign(globalThis, {
@@ -16,7 +17,7 @@ const { createRoot } = await import('react-dom/client')
 const source = await readFile(new URL('./index.jsx', import.meta.url), 'utf8')
 const output = await build({
   stdin: {
-    contents: source + '\nexport { identityRequest, Deployments, DeploymentMetrics, RailwayConnectionModal, AccountActionError, AccountConfirmNotice, DashboardAction }',
+    contents: source + '\nexport { identityRequest, Deployments, DeploymentMetrics, RailwayConnectionModal, ModelVisibilityCard, AccountActionError, AccountConfirmNotice, DashboardAction }',
     resolveDir: new URL('.', import.meta.url).pathname,
     loader: 'jsx',
   },
@@ -37,7 +38,7 @@ await writeFile(temp, output.outputFiles[0].text)
 const components = await import(temp.href)
 await rm(temp)
 
-const { identityRequest, Deployments, DeploymentMetrics, RailwayConnectionModal, AccountActionError, AccountConfirmNotice, DashboardAction } = components
+const { identityRequest, Deployments, DeploymentMetrics, RailwayConnectionModal, ModelVisibilityCard, AccountActionError, AccountConfirmNotice, DashboardAction } = components
 const App = components.default
 const dashboard='https://accounts.example.test/dashboard'
 const buttonTexts=()=>[...document.getElementById('root').querySelectorAll('button')].map(x=>x.textContent.trim())
@@ -56,6 +57,36 @@ async function mounted(component,props,check, responseBody={runtime:{},cpu:{},me
     assert.ok(calls.every(call=>call.method==='GET'),'navigation must never submit provider mutations')
   } finally {await act(async()=>root.unmount());globalThis.fetch=originalFetch}
 }
+for (const enabled of [false, true]) {
+  test(`model visibility keeps its shared switch styling and focus when ${enabled ? 'on' : 'off'}`, async () => {
+    const style = document.createElement('style')
+    style.textContent = IDENTITY_STYLES
+    document.head.append(style)
+    try {
+      await mounted(ModelVisibilityCard, { token: 'test' }, async () => {
+        const root = document.getElementById('root')
+        const input = root.querySelector('.id-switch-input')
+        const track = root.querySelector('.id-switch-track')
+        assert.equal(input.checked, enabled)
+        assert.equal(input.disabled, false)
+        assert.equal(window.getComputedStyle(root.querySelector('.id-switch')).display, 'grid')
+        assert.equal(window.getComputedStyle(input).opacity, '0')
+        assert.equal(window.getComputedStyle(track).width, '40px')
+        assert.equal(window.getComputedStyle(track).height, '24px')
+        assert.equal(window.getComputedStyle(root.querySelector('.id-switch-copy')).display, 'flex')
+        input.focus()
+        assert.equal(document.activeElement, input)
+        // JSDOM does not paint pseudo-elements; keep their state/focus rules pinned.
+        const rules = [...style.sheet.cssRules]
+        const rule = selector => rules.find(item => item.selectorText === selector)?.style
+        assert.equal(rule('.id-switch-track::after')?.width, '18px')
+        assert.equal(rule('.id-switch-input:checked + .id-switch-track::after')?.transform, 'translateX(16px)')
+        assert.equal(rule('.id-switch-input:focus-visible + .id-switch-track')?.outline, '2px solid var(--accent, #8b7cf6)')
+      }, { enabled })
+    } finally { style.remove() }
+  })
+}
+
 for(const status of ['ready','queued','creating','deploying','error','delete_failed','deleting']) {
   test(`${status} card matches lifecycle links and keeps protected operations dashboard-owned`,async()=>{
     const instance={id:'mob_test',name:'Test deployment',status,url:'https://deployment.example.test',railway_url:'https://railway.com/project/test',current_step:null,last_error:null,resources:{cpu:'2',memory_mb:4096,volume_size_mb:5000,plan:'pro'},actions:{delete:status!=='deleting',retry:['error','delete_failed'].includes(status),recover:['ready','error'].includes(status),edit_resources:status==='ready'}}
