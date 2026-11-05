@@ -759,3 +759,16 @@ test('deployment authoring has no duplicate workspace/region/plan state in the a
   assert.match(source, /label="New deployment"/)
   assert.match(source, /resourceSummary\(managed\.resources\)/)
 })
+
+test('reduced motion stops every keyframe animation in the stylesheet', async () => {
+  const { IDENTITY_STYLES } = await import('./identity-styles.js')
+  const css = IDENTITY_STYLES.replace(/\/\*[\s\S]*?\*\//g, '')
+  const reduced = css.match(/@media \(prefers-reduced-motion: reduce\) \{([\s\S]*?)\n\}/)?.[1]
+  assert.ok(reduced, 'the stylesheet keeps a prefers-reduced-motion block')
+  const animated = [...css.matchAll(/([^{}]+)\{[^{}]*\banimation:\s*id-[\w-]+/g)]
+    .map(([, selector]) => selector.trim())
+  assert.ok(animated.length > 0)
+  for (const selector of animated) {
+    assert.ok(reduced.includes(`${selector} { animation: none; }`), selector)
+  }
+})
